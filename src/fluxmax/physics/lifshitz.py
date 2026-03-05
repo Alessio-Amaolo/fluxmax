@@ -1,0 +1,460 @@
+"""Analytical Lifshitz formula for radiative heat transfer.
+
+Finite-thickness planar slabs separated by a vacuum gap.
+
+Provides the spectral transfer function T(ω, kpar) and its integral
+over kpar for the unpatterned (planar) case.
+
+See Polder & Van Hove, Theory of Radiative Heat Transfer between Closely Spaced Bodies
+"""
+
+from typing import Literal, Tuple
+
+import jax.numpy as jnp
+from jaxtyping import Array, Complex, Float, jaxtyped
+
+Polarization = Literal["s", "p"]
+
+
+@jaxtyped(typechecker=None)
+def _kz(
+    eps: Complex[Array, "*shape"] | complex,
+    omega: Float[Array, "*shape"] | float,
+    kpar: Float[Array, "*shape"] | float,
+) -> Complex[Array, "*shape"]:
+    r"""Compute the normal wavevector component $k_z$.
+
+    Uses
+
+    $$k_z = \sqrt{\varepsilon\,\omega^2 - k_{\parallel}^2},$$
+
+    and enforces the physical branch condition $\Im(k_z) \ge 0$ (decaying
+    evanescent waves).
+
+    Parameters
+    ----------
+    eps : complex or array
+        Relative permittivity $\varepsilon$.
+        Accepts a Python ``complex`` or a ``jaxtyping`` complex array
+        (``Complex[Array, "*shape"]``). Must be broadcastable with ``omega`` and
+        ``kpar``.
+    omega : float or array
+        Angular frequency $\omega$ (same broadcast rules as above).
+    kpar : float or array
+        In-plane wavevector magnitude $k_{\parallel}$.
+
+    Returns
+    -------
+    kz : complex array
+        Normal wavevector component with complex dtype
+        (``Complex[Array, "*shape"]``).
+    """
+    kz2 = jnp.asarray(eps) * omega**2 - kpar**2
+    kz = jnp.sqrt(kz2.astype(complex))
+    # If kz is complex we are not guaranteed to be in the right branch
+    # but physically we need Im(kz) >= 0 to enforce decay.
+    # So we flip the sign if necessary.
+    kz = jnp.where(jnp.imag(kz) < 0, -kz, kz)
+    return kz
+
+
+def fresnel_interface(
+    eps1: Complex[Array, "*shape"] | complex,
+    eps2: Complex[Array, "*shape"] | complex,
+    kz1: Complex[Array, "*shape"],
+    kz2: Complex[Array, "*shape"],
+    pol: Polarization,
+) -> Tuple[Complex[Array, "*shape"], Complex[Array, "*shape"]]:
+    """Compute Fresnel coefficients at a single interface (1 -> 2).
+
+    Corresponds to Eq. 18 in the paper by Polder & Van Hove.
+
+    Parameters
+    ----------
+    eps1, eps2 : complex or array
+        Permittivities of media 1 and 2 (broadcastable).
+    kz1, kz2 : complex array
+        Normal wavevector components in media 1 and 2.
+    pol : {"s", "p"}
+        Polarization: ``"s"`` (TE) or ``"p"`` (TM).
+
+    Returns
+    -------
+    r12 : complex array
+        Reflection amplitude coefficient.
+    t12 : complex array
+        Transmission amplitude coefficient.
+    """
+    if pol == "s":
+        r = (kz1 - kz2) / (kz1 + kz2)
+        t = 2 * kz1 / (kz1 + kz2)
+    elif pol == "p":
+        r = (eps2 * kz1 - eps1 * kz2) / (eps2 * kz1 + eps1 * kz2)
+        t = 2 * jnp.sqrt(eps1 * eps2) * kz1 / (eps2 * kz1 + eps1 * kz2)
+    else:
+        raise ValueError(f"Invalid polarization: {pol}")
+    return r, t
+
+
+def slab_RT(
+    eps_slab: Complex[Array, "*shape"] | complex,
+    omega: Float[Array, "*shape"] | float,
+    kpar: Float[Array, "*shape"] | float,
+    thickness: Float[Array, "*shape"] | float,
+    pol: Polarization,
+) -> Tuple[Complex[Array, "*shape"], Complex[Array, "*shape"]]:
+    r"""Reflection and transmission amplitudes of a finite slab.
+
+    Corresponds to Eq. 23 in the paper by Polder & Van Hove.
+
+    Geometry: vacuum | slab | vacuum.
+
+    Parameters
+    ----------
+    eps_slab : complex or array
+        Slab permittivity.
+    omega : float or array
+        Angular frequency.
+    kpar : float or array
+        In-plane wavevector magnitude $k_{\parallel}$.
+    thickness : float or array
+        Slab thickness.
+    pol : {"s", "p"}
+        Polarization: ``"s"`` (TE) or ``"p"`` (TM).
+
+    Returns
+    -------
+    R : complex array
+        Complex reflection amplitude coefficient.
+    T : complex array
+        Complex transmission amplitude coefficient.
+
+    Notes
+    -----
+    The result corresponds to a Fabry--Perot slab embedded in vacuum
+    ($\varepsilon = 1$).
+    """
+    eps_vac = 1.0 + 0j
+    kz0 = _kz(eps_vac, omega, kpar)
+    kzs = _kz(eps_slab, omega, kpar)
+
+    r01, t01 = fresnel_interface(eps_vac, eps_slab, kz0, kzs, pol)
+    r10, t10 = fresnel_interface(eps_slab, eps_vac, kzs, kz0, pol)
+
+    phase = jnp.exp(1j * kzs * thickness)
+    denom = 1 - r10 * r10 * phase**2
+
+    R = r01 + t01 * r10 * phase**2 * t10 / denom
+    T = t01 * phase * t10 / denom
+    return R, T
+
+
+def polder_van_hove_per_mode(
+    R_A: Complex[Array, "*shape"],
+    T_A: Complex[Array, "*shape"],
+    R_B: Complex[Array, "*shape"],
+    T_B: Complex[Array, "*shape"],
+    kz0: Complex[Array, "*shape"],
+    gap: Float[Array, "*shape"] | float,
+) -> Float[Array, "*shape"]:
+    r"""Compute the Polder-Van Hove transmission for one scalar mode.
+
+    Corresponds to Eq. 23 and 25 in the paper by Polder & Van Hove.
+
+    Parameters
+    ----------
+    R_A, T_A : complex array
+        Reflection and transmission amplitudes of body A (as seen from the gap).
+    R_B, T_B : complex array
+        Reflection and transmission amplitudes of body B (as seen from the gap).
+    kz0 : complex array
+        Vacuum normal wavevector component.
+    gap : float or array
+        Vacuum gap thickness.
+
+    Returns
+    -------
+    T_mode : float array
+        Dimensionless transmission (real-valued).
+
+    Notes
+    -----
+    For propagating modes ($\Re(k_z) > 0$, $\Im(k_z) \approx 0$):
+
+    $$T = \frac{(1-|R_A|^2-|T_A|^2)(1-|R_B|^2-|T_B|^2)}
+    {|1 - R_A R_B e^{2 i k_z d}|^2}.$$
+
+    For evanescent modes ($\Im(k_z) > 0$, $\Re(k_z) \approx 0$):
+
+    $$T = \frac{4\,\Im(R_A)\,\Im(R_B)\,e^{-2\kappa d}}
+    {|1 - R_A R_B e^{-2\kappa d}|^2}.$$
+    """
+    phase2 = jnp.exp(2j * kz0 * gap)
+    denom = jnp.abs(1.0 - R_A * R_B * phase2) ** 2
+
+    is_prop = jnp.imag(kz0) < 1e-10 * jnp.abs(kz0)
+
+    # Propagating
+    abs_A = 1 - jnp.abs(R_A) ** 2 - jnp.abs(T_A) ** 2
+    abs_B = 1 - jnp.abs(R_B) ** 2 - jnp.abs(T_B) ** 2
+    T_prop = abs_A * abs_B / denom
+
+    # Evanescent
+    T_evan = 4 * jnp.imag(R_A) * jnp.imag(R_B) * jnp.abs(phase2) / denom
+
+    return jnp.where(is_prop, T_prop, T_evan)
+
+
+def polder_van_hove_integrand(
+    kpar: Float[Array, "*shape"] | float,
+    omega: Float[Array, "*shape"] | float,
+    eps_A: Complex[Array, "*shape"] | complex,
+    thickness_A: Float[Array, "*shape"] | float,
+    eps_B: Complex[Array, "*shape"] | complex,
+    thickness_B: Float[Array, "*shape"] | float,
+    gap: Float[Array, "*shape"] | float,
+) -> Float[Array, "*shape"]:
+    r"""Compute the 1D radial integrand for the PVH planar formula.
+
+    Corresponds to Eq. 22 and 24 in the paper by Polder & Van Hove.
+
+    Returns
+    -------
+    $$\frac{k_{\parallel}}{2\pi}\sum_{p \in \{s,p\}} T(k_{\parallel}, p).$$
+
+    Parameters
+    ----------
+    kpar : float or array
+        In-plane wavevector magnitude $k_{\parallel}$.
+    omega : float or array
+        Angular frequency.
+    eps_A, eps_B : complex or array
+        Permittivities of slabs A and B.
+    thickness_A, thickness_B : float or array
+        Thicknesses of slabs A and B.
+    gap : float or array
+        Vacuum gap thickness.
+
+    Returns
+    -------
+    integrand : float array
+        Real-valued integrand sampled at ``kpar``.
+    """
+    kz0 = _kz(1.0 + 0j, omega, kpar)
+    total = jnp.zeros_like(kpar, dtype=float)
+    for pol in ("s", "p"):
+        R_A, T_A = slab_RT(eps_A, omega, kpar, thickness_A, pol)
+        R_B, T_B = slab_RT(eps_B, omega, kpar, thickness_B, pol)
+        total += polder_van_hove_per_mode(R_A, T_A, R_B, T_B, kz0, gap)
+    return kpar / (2 * jnp.pi) * total
+
+
+def polder_van_hove_integrated(
+    omega: Float[Array, "*shape"] | float,
+    eps_A: Complex[Array, "*shape"] | complex,
+    thickness_A: Float[Array, "*shape"] | float,
+    eps_B: Complex[Array, "*shape"] | complex,
+    thickness_B: Float[Array, "*shape"] | float,
+    gap: Float[Array, "*shape"] | float,
+    kpar_max_factor: float = 30.0,
+    n_kpar: int = 4000,
+) -> Float[Array, "*shape"]:
+    r"""Integrate the PVH planar transfer over in-plane wavevectors.
+
+    Computes the azimuthally-symmetric 2D integral
+
+    $$\int \frac{d^2k_{\parallel}}{(2\pi)^2}\sum_p T(k_{\parallel}, p)$$
+
+    via a 1D radial integral using a uniform grid in $k_{\parallel}$.
+
+    Parameters
+    ----------
+    omega : float or array
+        Angular frequency.
+    eps_A, eps_B : complex or array
+        Permittivities of slabs A and B.
+    thickness_A, thickness_B : float or array
+        Thicknesses of slabs A and B.
+    gap : float or array
+        Vacuum gap thickness.
+    kpar_max_factor : float, optional
+        Sets $k_{\parallel,\max} \approx \mathrm{kpar\_max\_factor}/\mathrm{gap}$.
+    n_kpar : int, optional
+        Number of $k_{\parallel}$ samples.
+
+    Returns
+    -------
+    transfer_int : float array
+        Integrated dimensionless transfer.
+
+    Notes
+    -----
+    The spectral heat flux per unit area is typically assembled as
+
+    $$\Phi(\omega)/A = \Theta(\omega, T) \times \mathrm{transfer\_int}.$$
+    """
+    kpar_max = kpar_max_factor / gap + 2 * omega
+    kpar = jnp.linspace(1e-12, kpar_max, n_kpar)
+    dk = kpar[1] - kpar[0]
+    integrand = polder_van_hove_integrand(
+        kpar, omega, eps_A, thickness_A, eps_B, thickness_B, gap
+    )
+    return jnp.sum(integrand) * dk
+
+
+def transfer_per_mode(
+    R_A: Complex[Array, "*shape"],
+    T_A: Complex[Array, "*shape"],
+    R_B: Complex[Array, "*shape"],
+    T_B: Complex[Array, "*shape"],
+    kz0: Complex[Array, "*shape"],
+    gap: Float[Array, "*shape"] | float,
+    omega: Float[Array, "*shape"] | float,
+) -> Float[Array, "*shape"]:
+    r"""Compute the scalar trace-formula transfer for one channel.
+
+    This evaluates the scalar analogue of the matrix trace formula,
+
+    $$\mathrm{Tr}_{\mathrm{single}} = P^* D^*\,\Sigma_A\,D\,P\,
+    \frac{\Sigma_B}{|k_{z0}|^2},$$
+
+    which should equal the standard PVH transmission for a single scalar mode.
+
+    Parameters
+    ----------
+    R_A, T_A : complex array
+        Reflection and transmission amplitudes of body A.
+    R_B, T_B : complex array
+        Reflection and transmission amplitudes of body B.
+    kz0 : complex array
+        Vacuum normal wavevector component.
+    gap : float or array
+        Vacuum gap thickness.
+    omega : float or array
+        Angular frequency.
+
+    Returns
+    -------
+    transfer : float array
+        Real-valued dimensionless transfer for this channel.
+
+    Notes
+    -----
+    For a single mode, the absorption operator used here is
+
+    $$\Sigma = \Re(k_{z0})(1 - |R|^2 - |T|^2) - 2\,\Im(k_{z0})\,\Im(R).$$
+    """
+    P = jnp.exp(1j * kz0 * gap)
+    denom = 1.0 - P * R_B * P * R_A
+    D = 1.0 / denom
+
+    kz_re: Float[Array, "*shape"] = jnp.real(kz0)
+    kz_im: Float[Array, "*shape"] = jnp.imag(kz0)
+
+    def sigma(
+        R: Complex[Array, "*shape"],
+        T: Complex[Array, "*shape"],
+    ) -> Float[Array, "*shape"]:
+        return kz_re * (1 - jnp.abs(R) ** 2 - jnp.abs(T) ** 2) - 2 * kz_im * jnp.imag(R)
+
+    sig_A = sigma(R_A, T_A)
+    sig_B = sigma(R_B, T_B)
+
+    P_dag = jnp.conj(P)
+    D_dag = jnp.conj(D)
+
+    # scalar trace: P* D* Σ_A D P Σ_B / |kz0|²
+    kz_abs_sq = kz_re**2 + kz_im**2
+    return jnp.real(P_dag * D_dag * sig_A * D * P * sig_B) / kz_abs_sq
+
+
+def transfer_kpar_integrand(
+    kpar: Float[Array, "*shape"] | float,
+    omega: Float[Array, "*shape"] | float,
+    eps_A: Complex[Array, "*shape"] | complex,
+    thickness_A: Float[Array, "*shape"] | float,
+    eps_B: Complex[Array, "*shape"] | complex,
+    thickness_B: Float[Array, "*shape"] | float,
+    gap: Float[Array, "*shape"] | float,
+) -> Float[Array, "*shape"]:
+    r"""Compute the radial integrand for the scalar trace transfer.
+
+    For the planar azimuthally-symmetric case,
+
+    $$\int \frac{d^2k_{\parallel}}{(2\pi)^2} T(k_{\parallel})
+    = \int_0^\infty dk_{\parallel}\,\frac{k_{\parallel}}{2\pi}
+    \sum_p T(k_{\parallel}, p).$$
+
+    Parameters
+    ----------
+    kpar : float or array
+        In-plane wavevector magnitude $k_{\parallel}$.
+    omega : float or array
+        Angular frequency.
+    eps_A, eps_B : complex or array
+        Permittivities of slabs A and B.
+    thickness_A, thickness_B : float or array
+        Thicknesses of slabs A and B.
+    gap : float or array
+        Vacuum gap thickness.
+
+    Returns
+    -------
+    integrand : float array
+        Real-valued integrand sampled at ``kpar``.
+    """
+    kz0 = _kz(jnp.asarray(1.0 + 0j), omega, kpar)
+    total = jnp.zeros_like(kpar, dtype=float)
+    for pol in ("s", "p"):
+        R_A, T_A = slab_RT(eps_A, omega, kpar, thickness_A, pol)
+        R_B, T_B = slab_RT(eps_B, omega, kpar, thickness_B, pol)
+        total += transfer_per_mode(R_A, T_A, R_B, T_B, kz0, gap, omega)
+    return kpar / (2 * jnp.pi) * total
+
+
+def integrated_transfer(
+    omega: Float[Array, "*shape"] | float,
+    eps_A: Complex[Array, "*shape"] | complex,
+    thickness_A: Float[Array, "*shape"] | float,
+    eps_B: Complex[Array, "*shape"] | complex,
+    thickness_B: Float[Array, "*shape"] | float,
+    gap: Float[Array, "*shape"] | float,
+    kpar_max_factor: float = 30.0,
+    n_kpar: int = 4000,
+) -> Float[Array, "*shape"]:
+    r"""Integrate the scalar trace transfer over in-plane wavevectors.
+
+    Performs a uniform-grid approximation of
+
+    $$\int \frac{d^2k_{\parallel}}{(2\pi)^2}\sum_p T(k_{\parallel}, p),$$
+
+    integrating from $k_{\parallel}=0$ up to a cutoff chosen to capture
+    evanescent contributions.
+
+    Parameters
+    ----------
+    omega : float or array
+        Angular frequency.
+    eps_A, eps_B : complex or array
+        Permittivities of slabs A and B.
+    thickness_A, thickness_B : float or array
+        Thicknesses of slabs A and B.
+    gap : float or array
+        Vacuum gap thickness.
+    kpar_max_factor : float, optional
+        Sets $k_{\parallel,\max} \approx \mathrm{kpar\_max\_factor}/\mathrm{gap}$.
+    n_kpar : int, optional
+        Number of $k_{\parallel}$ samples.
+
+    Returns
+    -------
+    transfer_int : float array
+        Integrated dimensionless transfer.
+    """
+    kpar_max = kpar_max_factor / gap + 2 * omega
+    kpar = jnp.linspace(1e-12, kpar_max, n_kpar)  # avoid exactly 0
+    dk = kpar[1] - kpar[0]
+    integrand = transfer_kpar_integrand(
+        kpar, omega, eps_A, thickness_A, eps_B, thickness_B, gap
+    )
+    return jnp.sum(integrand) * dk

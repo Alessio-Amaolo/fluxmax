@@ -1,0 +1,57 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "fluxmax"
+version = "0.1.0"
+description = "Near-field radiative heat transfer via RCWA trace formula."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+	"fmmax",
+	"jax",
+    "jaxtyping",
+    "numpy",
+]
+
+[project.optional-dependencies]
+dev = [
+	"pytest",
+	"mypy",
+	"ruff",
+    "matplotlib",
+]
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.ruff]
+line-length = 88
+extend-exclude = ["*.ipynb", "build", "dist"]
+
+[tool.ruff.lint]
+# Enable general linting + docstring checks
+select = ["E", "F", "I", "D"]
+# Enforce NumPy-style docstrings
+pydocstyle.convention = "numpy"
+ignore = ["F722"]
+
+[tool.ruff.lint.per-file-ignores]
+# Tests aren't required to be fully docstring-clean; also ignore long explanatory lines.
+"tests/**/*.py" = ["D", "E501"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+ignore_missing_imports = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+check_untyped_defs = true
+warn_unused_ignores = true
+warn_redundant_casts = true
+warn_unused_configs = true
+exclude = ["build", "docs"]
