@@ -465,7 +465,7 @@ def transfer_kpar_integrand(
     integrand : float array
         Real-valued integrand sampled at ``kpar``.
     """
-    kz0 = _kz(jnp.asarray(1.0 + 0j), omega, kpar)
+    kz0 = _kz(1.0 + 0j, omega, kpar)
     total = jnp.zeros_like(kpar, dtype=float)
     for pol in ("s", "p"):
         R_A, T_A = slab_RT(eps_A, omega, kpar, thickness_A, pol)
