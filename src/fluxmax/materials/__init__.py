@@ -1,17 +1,23 @@
-"""Material dispersion utilities."""
+"""Meep-backed material dispersion utilities."""
 
-from .materials import (
-    MaterialOpticalData,
+from .meep_materials import (
+    MATERIAL_ALIASES,
     available_materials,
     complex_refractive_index,
-    load_material_data,
+    meep_frequency_from_omega_nat,
+    omega_range_nat,
     permittivity,
+    resolve_material,
+    wavelength_range_um,
 )
 
 __all__ = [
-    "MaterialOpticalData",
+    "MATERIAL_ALIASES",
     "available_materials",
     "complex_refractive_index",
-    "load_material_data",
+    "meep_frequency_from_omega_nat",
+    "omega_range_nat",
     "permittivity",
+    "resolve_material",
+    "wavelength_range_um",
 ]
