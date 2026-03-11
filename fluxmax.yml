@@ -1,0 +1,14 @@
+name: fluxmax
+channels:
+  - conda-forge
+  - nodefaults
+dependencies:
+  - python=3.11
+  - pymeep
+  - jax
+  - jaxlib=*=*cuda*
+  - optax
+  - numpy
+  - pip
+  - pip:
+    - -e .[dev]
