@@ -1,11 +1,12 @@
 """Analytical Lifshitz formula for radiative heat transfer.
 
-Finite-thickness planar slabs separated by a vacuum gap.
+Planar bodies separated by a vacuum gap.
 
+Supports both finite-thickness slabs and semi-infinite half-spaces.
 Provides the spectral transfer function T(ω, kpar) and its integral
 over kpar for the unpatterned (planar) case.
 
-See Polder & Van Hove, Theory of Radiative Heat Transfer between Closely Spaced Bodies
+See Polder & Van Hove, Theory of Radiative Heat Transfer between Closely Spaced Bodies.
 """
 
 from typing import Literal, Tuple
@@ -58,6 +59,7 @@ def _kz(
     return kz
 
 
+@jaxtyped(typechecker=None)
 def fresnel_interface(
     eps1: Complex[Array, "*shape"] | complex,
     eps2: Complex[Array, "*shape"] | complex,
@@ -96,29 +98,74 @@ def fresnel_interface(
     return r, t
 
 
-def slab_RT(
-    eps_slab: Complex[Array, "*shape"] | complex,
+@jaxtyped(typechecker=None)
+def halfspace_RT(
+    eps_halfspace: Complex[Array, "*shape"] | complex,
     omega: Float[Array, "*shape"] | float,
     kpar: Float[Array, "*shape"] | float,
-    thickness: Float[Array, "*shape"] | float,
     pol: Polarization,
 ) -> Tuple[Complex[Array, "*shape"], Complex[Array, "*shape"]]:
-    r"""Reflection and transmission amplitudes of a finite slab.
+    r"""Reflection and transmission amplitudes of a semi-infinite half-space.
 
-    Corresponds to Eq. 23 in the paper by Polder & Van Hove.
-
-    Geometry: vacuum | slab | vacuum.
+    Geometry: vacuum | half-space.
 
     Parameters
     ----------
-    eps_slab : complex or array
-        Slab permittivity.
+    eps_halfspace : complex or array
+        Half-space permittivity.
     omega : float or array
         Angular frequency.
     kpar : float or array
         In-plane wavevector magnitude $k_{\parallel}$.
-    thickness : float or array
-        Slab thickness.
+    pol : {"s", "p"}
+        Polarization: ``"s"`` (TE) or ``"p"`` (TM).
+
+    Returns
+    -------
+    R : complex array
+        Complex reflection amplitude coefficient as seen from vacuum.
+    T : complex array
+        Transmission amplitude coefficient through the full body. This is
+        identically zero for a semi-infinite body because there is no second
+        vacuum interface.
+    """
+    eps_vac = 1.0 + 0j
+    kz0 = _kz(eps_vac, omega, kpar)
+    kz_halfspace = _kz(eps_halfspace, omega, kpar)
+    reflection, _ = fresnel_interface(eps_vac, eps_halfspace, kz0, kz_halfspace, pol)
+    transmission = jnp.zeros_like(reflection)
+    return reflection, transmission
+
+
+@jaxtyped(typechecker=None)
+def slab_RT(
+    eps_slab: Complex[Array, "*shape"] | complex,
+    omega: Float[Array, "*shape"] | float,
+    kpar: Float[Array, "*shape"] | float,
+    thickness: Float[Array, "*shape"] | float | None,
+    pol: Polarization,
+) -> Tuple[Complex[Array, "*shape"], Complex[Array, "*shape"]]:
+    r"""Reflection and transmission amplitudes of a planar body.
+
+    Corresponds to Eq. 23 in the paper by Polder & Van Hove for finite slabs,
+    and reduces to the single-interface Fresnel reflection for a semi-infinite
+    half-space.
+
+    Geometry:
+
+    - finite slab: vacuum | slab | vacuum
+    - semi-infinite body: vacuum | half-space
+
+    Parameters
+    ----------
+    eps_slab : complex or array
+        Body permittivity.
+    omega : float or array
+        Angular frequency.
+    kpar : float or array
+        In-plane wavevector magnitude $k_{\parallel}$.
+    thickness : float, array, or None
+        Body thickness. Pass ``None`` for a semi-infinite half-space.
     pol : {"s", "p"}
         Polarization: ``"s"`` (TE) or ``"p"`` (TM).
 
@@ -127,13 +174,19 @@ def slab_RT(
     R : complex array
         Complex reflection amplitude coefficient.
     T : complex array
-        Complex transmission amplitude coefficient.
+        Complex transmission amplitude coefficient through the full body.
 
     Notes
     -----
-    The result corresponds to a Fabry--Perot slab embedded in vacuum
-    ($\varepsilon = 1$).
+    For ``thickness is None``, the body is treated as a semi-infinite passive
+    medium and the result is ``(r_01, 0)``.
+
+    For finite ``thickness``, the result corresponds to a Fabry--Perot slab
+    embedded in vacuum ($\varepsilon = 1$).
     """
+    if thickness is None:
+        return halfspace_RT(eps_slab, omega, kpar, pol)
+
     eps_vac = 1.0 + 0j
     kz0 = _kz(eps_vac, omega, kpar)
     kzs = _kz(eps_slab, omega, kpar)
@@ -149,6 +202,7 @@ def slab_RT(
     return R, T
 
 
+@jaxtyped(typechecker=None)
 def polder_van_hove_per_mode(
     R_A: Complex[Array, "*shape"],
     T_A: Complex[Array, "*shape"],
@@ -205,13 +259,14 @@ def polder_van_hove_per_mode(
     return jnp.where(is_prop, T_prop, T_evan)
 
 
+@jaxtyped(typechecker=None)
 def polder_van_hove_integrand(
     kpar: Float[Array, "*shape"] | float,
     omega: Float[Array, "*shape"] | float,
     eps_A: Complex[Array, "*shape"] | complex,
-    thickness_A: Float[Array, "*shape"] | float,
+    thickness_A: Float[Array, "*shape"] | float | None,
     eps_B: Complex[Array, "*shape"] | complex,
-    thickness_B: Float[Array, "*shape"] | float,
+    thickness_B: Float[Array, "*shape"] | float | None,
     gap: Float[Array, "*shape"] | float,
 ) -> Float[Array, "*shape"]:
     r"""Compute the 1D radial integrand for the PVH planar formula.
@@ -230,8 +285,9 @@ def polder_van_hove_integrand(
         Angular frequency.
     eps_A, eps_B : complex or array
         Permittivities of slabs A and B.
-    thickness_A, thickness_B : float or array
-        Thicknesses of slabs A and B.
+    thickness_A, thickness_B : float, array, or None
+        Thicknesses of bodies A and B. Pass ``None`` for semi-infinite
+        half-spaces.
     gap : float or array
         Vacuum gap thickness.
 
@@ -249,12 +305,13 @@ def polder_van_hove_integrand(
     return kpar / (2 * jnp.pi) * total
 
 
+@jaxtyped(typechecker=None)
 def polder_van_hove_integrated(
     omega: Float[Array, "*shape"] | float,
     eps_A: Complex[Array, "*shape"] | complex,
-    thickness_A: Float[Array, "*shape"] | float,
+    thickness_A: Float[Array, "*shape"] | float | None,
     eps_B: Complex[Array, "*shape"] | complex,
-    thickness_B: Float[Array, "*shape"] | float,
+    thickness_B: Float[Array, "*shape"] | float | None,
     gap: Float[Array, "*shape"] | float,
     kpar_max_factor: float = 30.0,
     n_kpar: int = 4000,
@@ -273,8 +330,9 @@ def polder_van_hove_integrated(
         Angular frequency.
     eps_A, eps_B : complex or array
         Permittivities of slabs A and B.
-    thickness_A, thickness_B : float or array
-        Thicknesses of slabs A and B.
+    thickness_A, thickness_B : float, array, or None
+        Thicknesses of bodies A and B. Pass ``None`` for semi-infinite
+        half-spaces.
     gap : float or array
         Vacuum gap thickness.
     kpar_max_factor : float, optional
@@ -302,6 +360,7 @@ def polder_van_hove_integrated(
     return jnp.sum(integrand) * dk
 
 
+@jaxtyped(typechecker=None)
 def transfer_per_mode(
     R_A: Complex[Array, "*shape"],
     T_A: Complex[Array, "*shape"],
@@ -368,13 +427,14 @@ def transfer_per_mode(
     return jnp.real(P_dag * D_dag * sig_A * D * P * sig_B) / kz_abs_sq
 
 
+@jaxtyped(typechecker=None)
 def transfer_kpar_integrand(
     kpar: Float[Array, "*shape"] | float,
     omega: Float[Array, "*shape"] | float,
     eps_A: Complex[Array, "*shape"] | complex,
-    thickness_A: Float[Array, "*shape"] | float,
+    thickness_A: Float[Array, "*shape"] | float | None,
     eps_B: Complex[Array, "*shape"] | complex,
-    thickness_B: Float[Array, "*shape"] | float,
+    thickness_B: Float[Array, "*shape"] | float | None,
     gap: Float[Array, "*shape"] | float,
 ) -> Float[Array, "*shape"]:
     r"""Compute the radial integrand for the scalar trace transfer.
@@ -393,8 +453,9 @@ def transfer_kpar_integrand(
         Angular frequency.
     eps_A, eps_B : complex or array
         Permittivities of slabs A and B.
-    thickness_A, thickness_B : float or array
-        Thicknesses of slabs A and B.
+    thickness_A, thickness_B : float, array, or None
+        Thicknesses of bodies A and B. Pass ``None`` for semi-infinite
+        half-spaces.
     gap : float or array
         Vacuum gap thickness.
 
@@ -412,12 +473,13 @@ def transfer_kpar_integrand(
     return kpar / (2 * jnp.pi) * total
 
 
+@jaxtyped(typechecker=None)
 def integrated_transfer(
     omega: Float[Array, "*shape"] | float,
     eps_A: Complex[Array, "*shape"] | complex,
-    thickness_A: Float[Array, "*shape"] | float,
+    thickness_A: Float[Array, "*shape"] | float | None,
     eps_B: Complex[Array, "*shape"] | complex,
-    thickness_B: Float[Array, "*shape"] | float,
+    thickness_B: Float[Array, "*shape"] | float | None,
     gap: Float[Array, "*shape"] | float,
     kpar_max_factor: float = 30.0,
     n_kpar: int = 4000,
@@ -437,8 +499,9 @@ def integrated_transfer(
         Angular frequency.
     eps_A, eps_B : complex or array
         Permittivities of slabs A and B.
-    thickness_A, thickness_B : float or array
-        Thicknesses of slabs A and B.
+    thickness_A, thickness_B : float, array, or None
+        Thicknesses of bodies A and B. Pass ``None`` for semi-infinite
+        half-spaces.
     gap : float or array
         Vacuum gap thickness.
     kpar_max_factor : float, optional
