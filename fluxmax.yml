@@ -9,6 +9,7 @@ dependencies:
   - jaxlib=*=*cuda*
   - optax
   - numpy
+  - beartype
   - pip
   - pip:
     - -e .[dev]

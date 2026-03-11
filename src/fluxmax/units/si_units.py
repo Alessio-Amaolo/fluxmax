@@ -19,6 +19,7 @@ With that choice, all geometry specified as dimensionless numbers in the core
 from __future__ import annotations
 
 import jax.numpy as jnp
+from beartype import beartype
 from jaxtyping import Array, Float, jaxtyped
 
 # Physical constants (SI)
@@ -30,7 +31,7 @@ C_SI = 2.99792458e8  # [m/s]
 L0_M_DEFAULT = 100e-9
 
 
-@jaxtyped(typechecker=None)
+@jaxtyped(typechecker=beartype)
 def length_nat_to_m(
     x_nat: Float[Array, "*shape"] | float, *, L0_m: float = L0_M_DEFAULT
 ) -> Float[Array, "*shape"]:
@@ -38,7 +39,7 @@ def length_nat_to_m(
     return jnp.asarray(L0_m) * x_nat
 
 
-@jaxtyped(typechecker=None)
+@jaxtyped(typechecker=beartype)
 def length_m_to_nat(
     x_m: Float[Array, "*shape"] | float, *, L0_m: float = L0_M_DEFAULT
 ) -> Float[Array, "*shape"]:
@@ -46,7 +47,7 @@ def length_m_to_nat(
     return x_m / jnp.asarray(L0_m)
 
 
-@jaxtyped(typechecker=None)
+@jaxtyped(typechecker=beartype)
 def area_nat_to_m2(
     a_nat: Float[Array, "*shape"] | float, *, L0_m: float = L0_M_DEFAULT
 ) -> Float[Array, "*shape"]:
@@ -54,7 +55,7 @@ def area_nat_to_m2(
     return (jnp.asarray(L0_m) ** 2) * a_nat
 
 
-@jaxtyped(typechecker=None)
+@jaxtyped(typechecker=beartype)
 def area_m2_to_nat(
     a_m2: Float[Array, "*shape"] | float, *, L0_m: float = L0_M_DEFAULT
 ) -> Float[Array, "*shape"]:
@@ -62,7 +63,7 @@ def area_m2_to_nat(
     return a_m2 / (jnp.asarray(L0_m) ** 2)
 
 
-@jaxtyped(typechecker=None)
+@jaxtyped(typechecker=beartype)
 def omega_phys_to_nat(
     omega_phys: Float[Array, "*shape"] | float, *, L0_m: float = L0_M_DEFAULT
 ) -> Float[Array, "*shape"]:
@@ -73,7 +74,7 @@ def omega_phys_to_nat(
     return (jnp.asarray(L0_m) / C_SI) * omega_phys
 
 
-@jaxtyped(typechecker=None)
+@jaxtyped(typechecker=beartype)
 def omega_nat_to_phys(
     omega_nat: Float[Array, "*shape"] | float, *, L0_m: float = L0_M_DEFAULT
 ) -> Float[Array, "*shape"]:
@@ -81,7 +82,7 @@ def omega_nat_to_phys(
     return (C_SI / jnp.asarray(L0_m)) * omega_nat
 
 
-@jaxtyped(typechecker=None)
+@jaxtyped(typechecker=beartype)
 def omega_nat_to_wavelength_um(
     omega_nat: Float[Array, "*shape"] | float, *, L0_m: float = L0_M_DEFAULT
 ) -> Float[Array, "*shape"]:
@@ -92,7 +93,7 @@ def omega_nat_to_wavelength_um(
     return wavelength_m * 1e6
 
 
-@jaxtyped(typechecker=None)
+@jaxtyped(typechecker=beartype)
 def wavelength_um_to_omega_nat(
     wavelength_um: Float[Array, "*shape"] | float, *, L0_m: float = L0_M_DEFAULT
 ) -> Float[Array, "*shape"]:
@@ -101,7 +102,7 @@ def wavelength_um_to_omega_nat(
     return 2.0 * jnp.pi / wavelength_nat
 
 
-@jaxtyped(typechecker=None)
+@jaxtyped(typechecker=beartype)
 def temperature_K_to_nat(
     T_K: Float[Array, "*shape"] | float, *, L0_m: float = L0_M_DEFAULT
 ) -> Float[Array, "*shape"]:
@@ -113,7 +114,7 @@ def temperature_K_to_nat(
     return (KB_SI * T_K * jnp.asarray(L0_m)) / (HBAR_SI * C_SI)
 
 
-@jaxtyped(typechecker=None)
+@jaxtyped(typechecker=beartype)
 def temperature_nat_to_K(
     T_nat: Float[Array, "*shape"] | float, *, L0_m: float = L0_M_DEFAULT
 ) -> Float[Array, "*shape"]:
@@ -121,7 +122,7 @@ def temperature_nat_to_K(
     return (T_nat * (HBAR_SI * C_SI)) / (KB_SI * jnp.asarray(L0_m))
 
 
-@jaxtyped(typechecker=None)
+@jaxtyped(typechecker=beartype)
 def spectral_flux_density_nat_to_SI(
     phi_per_omega_per_area_nat: Float[Array, "*shape"] | float,
     *,
@@ -140,7 +141,7 @@ def spectral_flux_density_nat_to_SI(
     return (HBAR_SI * C_SI / (jnp.asarray(L0_m) ** 3)) * phi_per_omega_per_area_nat
 
 
-@jaxtyped(typechecker=None)
+@jaxtyped(typechecker=beartype)
 def flux_per_area_nat_to_SI(
     phi_per_area_nat: Float[Array, "*shape"] | float,
     *,

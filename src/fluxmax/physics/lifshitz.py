@@ -12,12 +12,13 @@ See Polder & Van Hove, Theory of Radiative Heat Transfer between Closely Spaced 
 from typing import Literal, Tuple
 
 import jax.numpy as jnp
+from beartype import beartype
 from jaxtyping import Array, Complex, Float, jaxtyped
 
 Polarization = Literal["s", "p"]
 
 
-@jaxtyped(typechecker=None)
+@jaxtyped(typechecker=beartype)
 def _kz(
     eps: Complex[Array, "*shape"] | complex,
     omega: Float[Array, "*shape"] | float,
@@ -59,7 +60,7 @@ def _kz(
     return kz
 
 
-@jaxtyped(typechecker=None)
+@jaxtyped(typechecker=beartype)
 def fresnel_interface(
     eps1: Complex[Array, "*shape"] | complex,
     eps2: Complex[Array, "*shape"] | complex,
@@ -98,7 +99,7 @@ def fresnel_interface(
     return r, t
 
 
-@jaxtyped(typechecker=None)
+@jaxtyped(typechecker=beartype)
 def halfspace_RT(
     eps_halfspace: Complex[Array, "*shape"] | complex,
     omega: Float[Array, "*shape"] | float,
@@ -137,7 +138,7 @@ def halfspace_RT(
     return reflection, transmission
 
 
-@jaxtyped(typechecker=None)
+@jaxtyped(typechecker=beartype)
 def slab_RT(
     eps_slab: Complex[Array, "*shape"] | complex,
     omega: Float[Array, "*shape"] | float,
@@ -202,7 +203,7 @@ def slab_RT(
     return R, T
 
 
-@jaxtyped(typechecker=None)
+@jaxtyped(typechecker=beartype)
 def polder_van_hove_per_mode(
     R_A: Complex[Array, "*shape"],
     T_A: Complex[Array, "*shape"],
@@ -259,7 +260,7 @@ def polder_van_hove_per_mode(
     return jnp.where(is_prop, T_prop, T_evan)
 
 
-@jaxtyped(typechecker=None)
+@jaxtyped(typechecker=beartype)
 def polder_van_hove_integrand(
     kpar: Float[Array, "*shape"] | float,
     omega: Float[Array, "*shape"] | float,
@@ -305,7 +306,7 @@ def polder_van_hove_integrand(
     return kpar / (2 * jnp.pi) * total
 
 
-@jaxtyped(typechecker=None)
+@jaxtyped(typechecker=beartype)
 def polder_van_hove_integrated(
     omega: Float[Array, "*shape"] | float,
     eps_A: Complex[Array, "*shape"] | complex,
@@ -360,7 +361,7 @@ def polder_van_hove_integrated(
     return jnp.sum(integrand) * dk
 
 
-@jaxtyped(typechecker=None)
+@jaxtyped(typechecker=beartype)
 def transfer_per_mode(
     R_A: Complex[Array, "*shape"],
     T_A: Complex[Array, "*shape"],
@@ -427,7 +428,7 @@ def transfer_per_mode(
     return jnp.real(P_dag * D_dag * sig_A * D * P * sig_B) / kz_abs_sq
 
 
-@jaxtyped(typechecker=None)
+@jaxtyped(typechecker=beartype)
 def transfer_kpar_integrand(
     kpar: Float[Array, "*shape"] | float,
     omega: Float[Array, "*shape"] | float,
@@ -473,7 +474,7 @@ def transfer_kpar_integrand(
     return kpar / (2 * jnp.pi) * total
 
 
-@jaxtyped(typechecker=None)
+@jaxtyped(typechecker=beartype)
 def integrated_transfer(
     omega: Float[Array, "*shape"] | float,
     eps_A: Complex[Array, "*shape"] | complex,
@@ -515,7 +516,7 @@ def integrated_transfer(
         Integrated dimensionless transfer.
     """
     kpar_max = kpar_max_factor / gap + 2 * omega
-    kpar = jnp.linspace(1e-12, kpar_max, n_kpar)  # avoid exactly 0
+    kpar = jnp.linspace(1e-12, kpar_max, n_kpar)
     dk = kpar[1] - kpar[0]
     integrand = transfer_kpar_integrand(
         kpar, omega, eps_A, thickness_A, eps_B, thickness_B, gap

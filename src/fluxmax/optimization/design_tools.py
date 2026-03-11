@@ -3,10 +3,12 @@
 from typing import Union
 
 import jax.numpy as jnp
+from beartype import beartype
 from fmmax.utils import interpolate_permittivity  # type: ignore[attr-defined]
-from jaxtyping import Array, Complex, Float
+from jaxtyping import Array, Complex, Float, jaxtyped
 
 
+@jaxtyped(typechecker=beartype)
 def project_tanh(
     rho_tilde: Float[Array, "..."],
     beta: Union[Float[Array, ""], float],
@@ -34,6 +36,7 @@ def project_tanh(
     return num / den
 
 
+@jaxtyped(typechecker=beartype)
 def metallic_eps_from_density(
     rho: Float[Array, "..."],
     eps_solid: Union[complex, Complex[Array, "..."]],
@@ -76,6 +79,7 @@ def metallic_eps_from_density(
     )
 
 
+@jaxtyped(typechecker=beartype)
 def dielectric_eps_from_density(
     rho: Float[Array, "..."],
     eps_solid: Union[complex, Complex[Array, "..."]],
