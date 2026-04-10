@@ -44,52 +44,6 @@ from fmmax.scattering import (  # type: ignore[attr-defined]
 )
 
 
-def circular_inclusion_permittivity(
-    pitch: float,
-    diameter: float,
-    eps_host: complex,
-    eps_inclusion: complex,
-    resolution: float,
-) -> jnp.ndarray:
-    r"""
-    2-D permittivity array with a circular inclusion centered in a square unit cell.
-
-    Creates a discretized grid representing the relative permittivity
-    of a square domain. Pixels within the circle's radius are assigned
-    `eps_inclusion`, while the remaining pixels are assigned `eps_host`.
-
-    Parameters
-    ----------
-    pitch : float
-        The side length of the square unit cell (e.g., in micrometers).
-    diameter : float
-        The diameter of the circular inclusion centered at (0, 0).
-    eps_host : complex
-        The relative permittivity of the background (host) medium.
-    eps_inclusion : complex
-        The relative permittivity of the circular inclusion material.
-    resolution : float
-        The physical size of a single pixel/grid cell.
-
-    Returns
-    -------
-    jnp.ndarray
-        A 2-D JAX array of shape (ny, nx) containing the permittivity values,
-        where nx = ny = round(pitch / resolution).
-
-    See Also
-    --------
-    eigensolve_isotropic_media : Function that typically consumes this array.
-    """
-    nx = int(round(pitch / resolution))
-    ny = int(round(pitch / resolution))
-    x = (jnp.arange(nx) + 0.5) * resolution - pitch / 2.0
-    y = (jnp.arange(ny) + 0.5) * resolution - pitch / 2.0
-    xx, yy = jnp.meshgrid(x, y, indexing="xy")
-    mask = (xx**2 + yy**2) < (diameter / 2.0) ** 2
-    return jnp.where(mask, eps_inclusion, eps_host)
-
-
 def make_rcwa_setup(
     pitch: float,
     approximate_num_terms: int,
