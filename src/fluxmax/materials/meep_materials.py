@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-# pyright: reportMissingImports=false
+from dataclasses import dataclass
+import numbers
 from typing import TypeAlias
 
 import jax.numpy as jnp
@@ -13,7 +14,28 @@ import numpy.typing as npt
 
 from fluxmax.units import si_units
 
-MaterialSpec: TypeAlias = str | mp.Medium
+
+@dataclass(frozen=True, slots=True)
+class ConstantPermittivity:
+    """Frequency-independent isotropic permittivity material.
+
+    This is a lightweight, non-meep material spec that can be passed anywhere
+    a meep material name/medium is accepted by this module.
+
+    Parameters
+    ----------
+    eps
+        Complex relative permittivity $\epsilon$.
+    name
+        Human-readable identifier used in plots/outputs.
+    """
+
+    eps: complex
+    name: str = "constant_eps"
+
+
+MaterialSpec: TypeAlias = str | mp.Medium | ConstantPermittivity | complex | float
+ResolvedMaterial: TypeAlias = mp.Medium | ConstantPermittivity
 
 MATERIAL_ALIASES = {
     "gold": "Au",
@@ -48,11 +70,26 @@ def available_materials() -> tuple[str, ...]:
 
 
 def resolve_material(material: MaterialSpec) -> tuple[str, mp.Medium]:
-    """Resolve a material name or ``mp.Medium`` into a canonical meep medium."""
+    """Resolve a material selector into a canonical material model.
+
+    Supported selectors:
+
+    - ``str``: looked up in ``meep.materials`` (with aliases)
+    - ``mp.Medium``: passed through directly
+    - ``ConstantPermittivity``: passed through directly
+    - numeric (float/complex): interpreted as constant scalar permittivity
+    """
     if isinstance(material, mp.Medium):
         return "custom_medium", material
 
-    canonical_name = MATERIAL_ALIASES.get(material.strip().lower(), material.strip())
+    if isinstance(material, ConstantPermittivity):
+        return material.name, material
+
+    if isinstance(material, numbers.Number) and not isinstance(material, bool):
+        eps_value = complex(material)
+        return "constant_eps", ConstantPermittivity(eps=eps_value)
+
+    canonical_name = MATERIAL_ALIASES.get(str(material).strip().lower(), str(material).strip())
     medium = getattr(meep_materials, canonical_name, None)
     if not isinstance(medium, mp.Medium):
         available = ", ".join(available_materials()) or "none"
@@ -73,8 +110,15 @@ def meep_frequency_from_omega_nat(
 
 
 def wavelength_range_um(material: MaterialSpec) -> tuple[float, float]:
-    """Return the valid wavelength interval in microns for a meep material."""
+    """Return the valid wavelength interval in microns.
+
+    For meep materials, this is taken from ``valid_freq_range``.
+    For ``ConstantPermittivity``, this returns ``(0.0, +inf)``.
+    """
     _, medium = resolve_material(material)
+    if isinstance(medium, ConstantPermittivity):
+        return 0.0, float("inf")
+
     freq_range = getattr(medium, "valid_freq_range", None)
     if freq_range is None:
         raise ValueError("The selected meep material does not expose valid_freq_range.")
@@ -104,7 +148,14 @@ def omega_range_nat(
     material: MaterialSpec,
     L0_m: float = si_units.L0_M_DEFAULT,
 ) -> tuple[float, float]:
-    """Return the valid natural-unit omega interval for a meep material."""
+    """Return the valid natural-unit omega interval.
+
+    For ``ConstantPermittivity``, this returns ``(0.0, +inf)``.
+    """
+    _, medium = resolve_material(material)
+    if isinstance(medium, ConstantPermittivity):
+        return 0.0, float("inf")
+
     min_wavelength_um, max_wavelength_um = wavelength_range_um(material)
     return (
         float(
@@ -125,7 +176,12 @@ def permittivity(
     material: MaterialSpec,
     L0_m: float = si_units.L0_M_DEFAULT,
 ) -> jnp.ndarray:
-    """Evaluate scalar complex permittivity from a meep dispersion model."""
+    """Evaluate scalar complex permittivity.
+
+    For meep materials, this evaluates the underlying dispersion model.
+    For ``ConstantPermittivity`` (or a scalar numeric selector), this returns a
+    broadcasted constant complex array.
+    """
     material_name, medium = resolve_material(material)
     omega_array = jnp.asarray(omega_nat)
     omega_np = np.asarray(omega_array, dtype=float)
@@ -134,6 +190,9 @@ def permittivity(
         raise ValueError("omega_nat must contain only finite values.")
     if np.any(omega_np <= 0.0):
         raise ValueError("omega_nat must be strictly positive.")
+
+    if isinstance(medium, ConstantPermittivity):
+        return jnp.full(omega_array.shape, medium.eps, dtype=complex)
 
     min_omega, max_omega = omega_range_nat(medium, L0_m=L0_m)
     if np.any(omega_np < min_omega) or np.any(omega_np > max_omega):
