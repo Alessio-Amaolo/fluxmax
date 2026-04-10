@@ -123,7 +123,7 @@ def compute_sigma(
 @jaxtyped(typechecker=beartype)
 def propagation_matrix(
     eigenvalues: Complex[Array, "*batch two_n"],
-    gap_thickness: Float[Array, "*batch"] | float,
+    gap_thickness: Float[Array, "..."] | float,
 ) -> Complex[Array, "*batch two_n two_n"]:
     """Diagonal propagation matrix  P = diag(exp(i q d)).
 
@@ -146,7 +146,7 @@ def propagation_matrix(
     Complex[Array, "*batch two_n two_n"]
         Diagonal propagation matrix with shape (..., 2N, 2N).
     """
-    gap_thickness_array: Float[Array, "*batch"] = jnp.asarray(gap_thickness)
+    gap_thickness_array: Float[Array, "..."] = jnp.asarray(gap_thickness)
     return _diag(jnp.exp(1j * eigenvalues * gap_thickness_array[..., jnp.newaxis]))
 
 
