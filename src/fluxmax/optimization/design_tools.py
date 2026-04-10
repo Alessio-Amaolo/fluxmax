@@ -94,3 +94,118 @@ def dielectric_eps_from_density(
     eps_solid_arr = jnp.asarray(eps_solid, dtype=complex)
     eps_void_arr = jnp.asarray(eps_void, dtype=complex)
     return eps_void_arr + rho * (eps_solid_arr - eps_void_arr)
+
+
+def circular_inclusion_permittivity(
+    pitch: float,
+    diameter: float,
+    eps_host: complex,
+    eps_inclusion: complex,
+    resolution: float,
+    softness: float = 0.0,
+) -> jnp.ndarray:
+    r"""
+    2-D permittivity array with a circular inclusion centered in a square unit cell.
+
+    Creates a discretized grid representing the relative permittivity
+    of a square domain. Pixels within the circle's radius are assigned
+    `eps_inclusion`, while the remaining pixels are assigned `eps_host`.
+
+    Parameters
+    ----------
+    pitch : float
+        The side length of the square unit cell (e.g., in micrometers).
+    diameter : float
+        The diameter of the circular inclusion centered at (0, 0).
+    eps_host : complex
+        The relative permittivity of the background (host) medium.
+    eps_inclusion : complex
+        The relative permittivity of the circular inclusion material.
+    resolution : float
+        The physical size of a single pixel/grid cell.
+    softness : float, optional
+        Width of the softened boundary region in the same units as ``pitch``
+        and ``diameter``. The default of ``0.0`` preserves the current hard
+        circular boundary.
+
+    Returns
+    -------
+    jnp.ndarray
+        A 2-D JAX array of shape (ny, nx) containing the permittivity values,
+        where nx = ny = round(pitch / resolution).
+
+    See Also
+    --------
+    eigensolve_isotropic_media : Function that typically consumes this array.
+    """
+    if softness < 0.0:
+        raise ValueError("softness must be non-negative")
+
+    nx = int(round(pitch / resolution))
+    ny = int(round(pitch / resolution))
+    x = (jnp.arange(nx) + 0.5) * resolution - pitch / 2.0
+    y = (jnp.arange(ny) + 0.5) * resolution - pitch / 2.0
+    xx, yy = jnp.meshgrid(x, y, indexing="xy")
+    radius = diameter / 2.0
+
+    if softness == 0.0:
+        mask = (xx**2 + yy**2) < radius**2
+        return jnp.where(mask, eps_inclusion, eps_host)
+
+    signed_distance = radius - jnp.sqrt(xx**2 + yy**2)
+    density = jnp.clip(0.5 + signed_distance / softness, 0.0, 1.0)
+    return dielectric_eps_from_density(
+        rho=density,
+        eps_solid=eps_inclusion,
+        eps_void=eps_host,
+    )
+
+
+def circular_exclusion_permittivity(
+    pitch: float,
+    diameter: float,
+    eps_slab: complex,
+    eps_exclusion: complex,
+    resolution: float,
+    softness: float = 0.0,
+) -> jnp.ndarray:
+    r"""
+    2-D permittivity array with a circular exclusion centered in a slab unit cell.
+
+    This is the hole/exclusion counterpart to
+    :func:`circular_inclusion_permittivity`. Pixels inside the circular
+    exclusion are assigned ``eps_exclusion`` while the surrounding slab is
+    assigned ``eps_slab``.
+
+    Parameters
+    ----------
+    pitch : float
+        The side length of the square unit cell.
+    diameter : float
+        The diameter of the circular exclusion centered at ``(0, 0)``.
+    eps_slab : complex
+        The relative permittivity of the slab material.
+    eps_exclusion : complex
+        The relative permittivity inside the excluded region.
+    resolution : float
+        The physical size of a single pixel/grid cell.
+    softness : float, optional
+        Width of the softened boundary region in the same units as ``pitch``
+        and ``diameter``. The default of ``0.0`` preserves the current hard
+        circular boundary.
+
+    Returns
+    -------
+    jnp.ndarray
+        A 2-D JAX array of shape ``(ny, nx)`` containing the permittivity values.
+    """
+    return circular_inclusion_permittivity(
+        pitch=pitch,
+        diameter=diameter,
+        eps_host=eps_slab,
+        eps_inclusion=eps_exclusion,
+        resolution=resolution,
+        softness=softness,
+    )
+
+
