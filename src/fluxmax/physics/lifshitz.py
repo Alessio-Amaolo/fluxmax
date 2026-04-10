@@ -11,6 +11,7 @@ See Polder & Van Hove, Theory of Radiative Heat Transfer between Closely Spaced 
 
 from typing import Literal, Tuple
 
+import jax
 import jax.numpy as jnp
 from beartype import beartype
 from jaxtyping import Array, Complex, Float, jaxtyped
@@ -20,10 +21,10 @@ Polarization = Literal["s", "p"]
 
 @jaxtyped(typechecker=beartype)
 def _kz(
-    eps: Complex[Array, "*shape"] | complex,
-    omega: Float[Array, "*shape"] | float,
-    kpar: Float[Array, "*shape"] | float,
-) -> Complex[Array, "*shape"]:
+    eps: Complex[Array, "..."] | complex,
+    omega: Float[Array, "..."] | float,
+    kpar: Float[Array, "..."] | float,
+) -> Complex[Array, "..."]:
     r"""Compute the normal wavevector component $k_z$.
 
     Uses
@@ -62,12 +63,12 @@ def _kz(
 
 @jaxtyped(typechecker=beartype)
 def fresnel_interface(
-    eps1: Complex[Array, "*shape"] | complex,
-    eps2: Complex[Array, "*shape"] | complex,
-    kz1: Complex[Array, "*shape"],
-    kz2: Complex[Array, "*shape"],
+    eps1: Complex[Array, "..."] | complex,
+    eps2: Complex[Array, "..."] | complex,
+    kz1: Complex[Array, "..."],
+    kz2: Complex[Array, "..."],
     pol: Polarization,
-) -> Tuple[Complex[Array, "*shape"], Complex[Array, "*shape"]]:
+) -> Tuple[Complex[Array, "..."], Complex[Array, "..."]]:
     """Compute Fresnel coefficients at a single interface (1 -> 2).
 
     Corresponds to Eq. 18 in the paper by Polder & Van Hove.
@@ -101,11 +102,11 @@ def fresnel_interface(
 
 @jaxtyped(typechecker=beartype)
 def halfspace_RT(
-    eps_halfspace: Complex[Array, "*shape"] | complex,
-    omega: Float[Array, "*shape"] | float,
-    kpar: Float[Array, "*shape"] | float,
+    eps_halfspace: Complex[Array, "..."] | complex,
+    omega: Float[Array, "..."] | float,
+    kpar: Float[Array, "..."] | float,
     pol: Polarization,
-) -> Tuple[Complex[Array, "*shape"], Complex[Array, "*shape"]]:
+) -> Tuple[Complex[Array, "..."], Complex[Array, "..."]]:
     r"""Reflection and transmission amplitudes of a semi-infinite half-space.
 
     Geometry: vacuum | half-space.
@@ -140,12 +141,12 @@ def halfspace_RT(
 
 @jaxtyped(typechecker=beartype)
 def slab_RT(
-    eps_slab: Complex[Array, "*shape"] | complex,
-    omega: Float[Array, "*shape"] | float,
-    kpar: Float[Array, "*shape"] | float,
-    thickness: Float[Array, "*shape"] | float | None,
+    eps_slab: Complex[Array, "..."] | complex,
+    omega: Float[Array, "..."] | float,
+    kpar: Float[Array, "..."] | float,
+    thickness: Float[Array, "..."] | float | None,
     pol: Polarization,
-) -> Tuple[Complex[Array, "*shape"], Complex[Array, "*shape"]]:
+) -> Tuple[Complex[Array, "..."], Complex[Array, "..."]]:
     r"""Reflection and transmission amplitudes of a planar body.
 
     Corresponds to Eq. 23 in the paper by Polder & Van Hove for finite slabs,
@@ -205,13 +206,13 @@ def slab_RT(
 
 @jaxtyped(typechecker=beartype)
 def polder_van_hove_per_mode(
-    R_A: Complex[Array, "*shape"],
-    T_A: Complex[Array, "*shape"],
-    R_B: Complex[Array, "*shape"],
-    T_B: Complex[Array, "*shape"],
-    kz0: Complex[Array, "*shape"],
-    gap: Float[Array, "*shape"] | float,
-) -> Float[Array, "*shape"]:
+    R_A: Complex[Array, "..."],
+    T_A: Complex[Array, "..."],
+    R_B: Complex[Array, "..."],
+    T_B: Complex[Array, "..."],
+    kz0: Complex[Array, "..."],
+    gap: Float[Array, "..."] | float,
+) -> Float[Array, "..."]:
     r"""Compute the Polder-Van Hove transmission for one scalar mode.
 
     Corresponds to Eq. 23 and 25 in the paper by Polder & Van Hove.
@@ -262,14 +263,14 @@ def polder_van_hove_per_mode(
 
 @jaxtyped(typechecker=beartype)
 def polder_van_hove_integrand(
-    kpar: Float[Array, "*shape"] | float,
-    omega: Float[Array, "*shape"] | float,
-    eps_A: Complex[Array, "*shape"] | complex,
-    thickness_A: Float[Array, "*shape"] | float | None,
-    eps_B: Complex[Array, "*shape"] | complex,
-    thickness_B: Float[Array, "*shape"] | float | None,
-    gap: Float[Array, "*shape"] | float,
-) -> Float[Array, "*shape"]:
+    kpar: Float[Array, "..."] | float,
+    omega: Float[Array, "..."] | float,
+    eps_A: Complex[Array, "..."] | complex,
+    thickness_A: Float[Array, "..."] | float | None,
+    eps_B: Complex[Array, "..."] | complex,
+    thickness_B: Float[Array, "..."] | float | None,
+    gap: Float[Array, "..."] | float,
+) -> Float[Array, "..."]:
     r"""Compute the 1D radial integrand for the PVH planar formula.
 
     Corresponds to Eq. 22 and 24 in the paper by Polder & Van Hove.
@@ -308,15 +309,15 @@ def polder_van_hove_integrand(
 
 @jaxtyped(typechecker=beartype)
 def polder_van_hove_integrated(
-    omega: Float[Array, "*shape"] | float,
-    eps_A: Complex[Array, "*shape"] | complex,
-    thickness_A: Float[Array, "*shape"] | float | None,
-    eps_B: Complex[Array, "*shape"] | complex,
-    thickness_B: Float[Array, "*shape"] | float | None,
-    gap: Float[Array, "*shape"] | float,
+    omega: Float[Array, "..."] | float,
+    eps_A: Complex[Array, "..."] | complex,
+    thickness_A: Float[Array, "..."] | float | None,
+    eps_B: Complex[Array, "..."] | complex,
+    thickness_B: Float[Array, "..."] | float | None,
+    gap: Float[Array, "..."] | float,
     kpar_max_factor: float = 30.0,
-    n_kpar: int = 4000,
-) -> Float[Array, "*shape"]:
+    n_kpar: int = 8000,
+) -> Float[Array, "..."]:
     r"""Integrate the PVH planar transfer over in-plane wavevectors.
 
     Computes the azimuthally-symmetric 2D integral
@@ -362,15 +363,122 @@ def polder_van_hove_integrated(
 
 
 @jaxtyped(typechecker=beartype)
-def transfer_per_mode(
-    R_A: Complex[Array, "*shape"],
-    T_A: Complex[Array, "*shape"],
-    R_B: Complex[Array, "*shape"],
-    T_B: Complex[Array, "*shape"],
-    kz0: Complex[Array, "*shape"],
-    gap: Float[Array, "*shape"] | float,
-    omega: Float[Array, "*shape"] | float,
+def planar_spectral_flux(
+    omega: Float[Array, "*shape"],
+    eps_A: Complex[Array, "*shape"],
+    eps_B: Complex[Array, "*shape"],
+    gap: float,
+    theta_hot: Float[Array, "*shape"],
+    theta_cold: Float[Array, "*shape"],
+    thickness_A: float | None = None,
+    thickness_B: float | None = None,
+    kpar_max_factor: float = 30.0,
+    n_kpar: int = 8000,
 ) -> Float[Array, "*shape"]:
+    r"""Compute the planar spectral heat flux between two bodies.
+
+    Batches the Polder-Van Hove integration over an array of frequencies
+    and corresponding permittivities.
+
+    Parameters
+    ----------
+    omega : array
+        Angular frequencies.
+    eps_A, eps_B : complex arrays
+        Frequency-dependent permittivities for bodies A and B.
+    gap : float
+        Vacuum gap thickness.
+    theta_hot, theta_cold : arrays
+        Thermal energy terms (e.g., mean Bose-Einstein distributions) for
+        the hot and cold bodies.
+    thickness_A, thickness_B : float or None, optional
+        Thicknesses of the bodies. Pass None for semi-infinite.
+    kpar_max_factor : float, optional
+        Sets the maximum in-plane wavevector integration limit.
+    n_kpar : int, optional
+        Number of k_parallel samples for the integration.
+
+    Returns
+    -------
+    phi_omega : float array
+        The spectral heat flux array matching the shape of omega.
+    """
+    transfer_1d = jax.vmap(
+        polder_van_hove_integrated, in_axes=(0, 0, None, 0, None, None, None, None)
+    )(omega, eps_A, thickness_A, eps_B, thickness_B, gap, kpar_max_factor, n_kpar)
+
+    return omega * (theta_hot - theta_cold) * transfer_1d
+
+
+@jaxtyped(typechecker=beartype)
+def frequency_integrated_planar_spectral_flux(
+    omega: Float[Array, "*shape"],
+    eps_A: Complex[Array, "*shape"],
+    eps_B: Complex[Array, "*shape"],
+    gap: float,
+    theta_hot: Float[Array, "*shape"],
+    theta_cold: Float[Array, "*shape"],
+    thickness_A: float | None = None,
+    thickness_B: float | None = None,
+    kpar_max_factor: float = 30.0,
+    n_kpar: int = 8000,
+) -> Float[Array, ""]:
+    r"""Compute the total frequency-integrated planar heat flux.
+
+    Calculates the spectral heat flux and integrates it over the frequency
+    array `omega` using the trapezoidal rule.
+
+    Parameters
+    ----------
+    omega : array
+        Angular frequencies.
+    eps_A, eps_B : complex arrays
+        Frequency-dependent permittivities for bodies A and B.
+    gap : float
+        Vacuum gap thickness.
+    theta_hot, theta_cold : arrays
+        Thermal energy terms (e.g., mean Bose-Einstein distributions).
+    thickness_A, thickness_B : float or None, optional
+        Thicknesses of the bodies. Pass None for semi-infinite.
+    kpar_max_factor : float, optional
+        Sets the maximum in-plane wavevector integration limit.
+    n_kpar : int, optional
+        Number of k_parallel samples for the integration.
+
+    Returns
+    -------
+    total_flux : scalar float array
+        The total integrated heat flux (e.g., in W/m^2).
+    """
+    phi_omega = planar_spectral_flux(
+        omega=omega,
+        eps_A=eps_A,
+        eps_B=eps_B,
+        gap=gap,
+        theta_hot=theta_hot,
+        theta_cold=theta_cold,
+        thickness_A=thickness_A,
+        thickness_B=thickness_B,
+        kpar_max_factor=kpar_max_factor,
+        n_kpar=n_kpar,
+    )
+
+    return jnp.trapezoid(phi_omega, x=omega)
+
+
+### Trace formulas ###
+
+
+@jaxtyped(typechecker=beartype)
+def transfer_per_mode(
+    R_A: Complex[Array, "..."],
+    T_A: Complex[Array, "..."],
+    R_B: Complex[Array, "..."],
+    T_B: Complex[Array, "..."],
+    kz0: Complex[Array, "..."],
+    gap: Float[Array, "..."] | float,
+    omega: Float[Array, "..."] | float,
+) -> Float[Array, "..."]:
     r"""Compute the scalar trace-formula transfer for one channel.
 
     This evaluates the scalar analogue of the matrix trace formula,
@@ -430,14 +538,14 @@ def transfer_per_mode(
 
 @jaxtyped(typechecker=beartype)
 def transfer_kpar_integrand(
-    kpar: Float[Array, "*shape"] | float,
-    omega: Float[Array, "*shape"] | float,
-    eps_A: Complex[Array, "*shape"] | complex,
-    thickness_A: Float[Array, "*shape"] | float | None,
-    eps_B: Complex[Array, "*shape"] | complex,
-    thickness_B: Float[Array, "*shape"] | float | None,
-    gap: Float[Array, "*shape"] | float,
-) -> Float[Array, "*shape"]:
+    kpar: Float[Array, "..."] | float,
+    omega: Float[Array, "..."] | float,
+    eps_A: Complex[Array, "..."] | complex,
+    thickness_A: Float[Array, "..."] | float | None,
+    eps_B: Complex[Array, "..."] | complex,
+    thickness_B: Float[Array, "..."] | float | None,
+    gap: Float[Array, "..."] | float,
+) -> Float[Array, "..."]:
     r"""Compute the radial integrand for the scalar trace transfer.
 
     For the planar azimuthally-symmetric case,
@@ -476,15 +584,15 @@ def transfer_kpar_integrand(
 
 @jaxtyped(typechecker=beartype)
 def integrated_transfer(
-    omega: Float[Array, "*shape"] | float,
-    eps_A: Complex[Array, "*shape"] | complex,
-    thickness_A: Float[Array, "*shape"] | float | None,
-    eps_B: Complex[Array, "*shape"] | complex,
-    thickness_B: Float[Array, "*shape"] | float | None,
-    gap: Float[Array, "*shape"] | float,
+    omega: Float[Array, "..."] | float,
+    eps_A: Complex[Array, "..."] | complex,
+    thickness_A: Float[Array, "..."] | float | None,
+    eps_B: Complex[Array, "..."] | complex,
+    thickness_B: Float[Array, "..."] | float | None,
+    gap: Float[Array, "..."] | float,
     kpar_max_factor: float = 30.0,
     n_kpar: int = 4000,
-) -> Float[Array, "*shape"]:
+) -> Float[Array, "..."]:
     r"""Integrate the scalar trace transfer over in-plane wavevectors.
 
     Performs a uniform-grid approximation of
