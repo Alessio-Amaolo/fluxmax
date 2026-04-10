@@ -29,7 +29,7 @@ PITCH = 1.0
 GAPS = [0.1, 0.2, 0.5, 1.0]
 
 APPROXIMATE_NUM_TERMS_BY_GAP = {0.1: 200, 0.2: 50, 0.5: 50, 1.0: 50}
-BZ_GRID_BY_GAP = {0.1: (3, 3), 0.2: (3, 3), 0.5: (5, 5), 1.0: (3, 3)}
+BZ_GRID_BY_GAP = {0.1: (3, 3), 0.2: (3, 3), 0.5: (5, 5), 1.0: (5, 5)}
 TERMS_SWEEP = [1, 5, 10, 25]
 
 RELATIVE_ERROR_TOLERANCE = 0.10
@@ -51,10 +51,15 @@ def _estimated_peak_memory_gb(
 
 
 def _rcwa_transfer_for_gap(
-    gap: float, num_terms: int, bz_grid: tuple[int, int]
+    gap: float,
+    num_terms: int,
+    bz_grid: tuple[int, int],
+    *,
+    eps_slab: complex = EPS_SLAB,
+    slab_thickness: float = SLAB_THICKNESS,
 ) -> float:
     wavelength = jnp.asarray(WAVELENGTH)
-    thickness = jnp.asarray(SLAB_THICKNESS)
+    thickness = jnp.asarray(slab_thickness)
     gap_d = jnp.asarray(gap)
 
     plv, expansion, in_plane_wavevector = ss.make_rcwa_setup(
@@ -71,7 +76,7 @@ def _rcwa_transfer_for_gap(
     )
 
     vac_lsr = ss.eigensolve_uniform(**eigensolve_kw, permittivity=1.0 + 0j)
-    slab_lsr = ss.eigensolve_uniform(**eigensolve_kw, permittivity=EPS_SLAB)
+    slab_lsr = ss.eigensolve_uniform(**eigensolve_kw, permittivity=eps_slab)
 
     reflection_a, transmission_a, _ = ss.body_s_matrices(
         vac_lsr, slab_lsr, thickness, is_body_A=True
@@ -191,3 +196,125 @@ def test_planar_trace_matches_pvh_and_writes_diagnostics() -> None:
         rcwa_by_terms[int(terms)] = values
 
     _save_outputs(gaps=gaps, pvh=pvh, rcwa_by_terms=rcwa_by_terms)
+
+
+def test_lossless_planar_transfer_is_zero() -> None:
+    eps_real = 4.0 + 0.0j
+    gap = 0.2
+    threshold = 1e-10
+
+    omega = fmmax.angular_frequency_for_wavelength(  # type: ignore[attr-defined]
+        jnp.asarray(WAVELENGTH)
+    )
+    pvh = float(
+        lifshitz.polder_van_hove_integrated(
+            omega=omega,
+            eps_A=eps_real,
+            thickness_A=SLAB_THICKNESS,
+            eps_B=eps_real,
+            thickness_B=SLAB_THICKNESS,
+            gap=gap,
+            kpar_max_factor=50.0,
+            n_kpar=8000,
+        )
+    )
+
+    rcwa = _rcwa_transfer_for_gap(
+        gap,
+        num_terms=50,
+        bz_grid=(5, 5),
+        eps_slab=eps_real,
+        slab_thickness=SLAB_THICKNESS,
+    )
+
+    assert abs(pvh) < threshold, f"PVH should vanish for lossless slab, got {pvh:.3e}"
+    assert abs(rcwa) < threshold, f"RCWA should vanish for lossless slab, got {rcwa:.3e}"
+
+
+def test_blackbody_limit_for_pvh_and_rcwa() -> None:
+    omega = float(
+        fmmax.angular_frequency_for_wavelength(  # type: ignore[attr-defined]
+            jnp.asarray(WAVELENGTH)
+        )
+    )
+    expected = omega**2 / (2 * jnp.pi)
+
+    # PVH logic check: perfect absorbers (R = 0, T = 0) should recover ω²/(2π).
+    gap = 0.2
+    n_kpar = 8000
+    kpar = jnp.linspace(1e-12, omega, n_kpar)
+    dk = kpar[1] - kpar[0]
+
+    kz0 = lifshitz._kz(1.0 + 0j, omega, kpar)
+    r_zero = jnp.zeros_like(kpar, dtype=complex)
+    t_zero = jnp.zeros_like(kpar, dtype=complex)
+
+    tau_total = jnp.zeros_like(kpar, dtype=float)
+    for _pol in ("s", "p"):
+        tau_total += lifshitz.polder_van_hove_per_mode(
+            r_zero,
+            t_zero,
+            r_zero,
+            t_zero,
+            kz0,
+            gap,
+        )
+
+    pvh_blackbody = jnp.sum(kpar / (2 * jnp.pi) * tau_total) * dk
+    rel_pvh = abs(float(pvh_blackbody) - float(expected)) / float(expected)
+    assert rel_pvh < 1e-3, (
+        f"PVH blackbody mismatch: got {float(pvh_blackbody):.6e}, "
+        f"expected {float(expected):.6e}, rel_err={rel_pvh:.3e}"
+    )
+
+    # r = -ikappa / (2 + ikappa) for a slab with n = 1 + iκ, 
+    # so κ = 0.02 gives R ≈ 0.01, which is small.
+    # Because the slab is also thick, t goes to zero as well.
+    # Overall this will approach a black body.
+    # This is an approximation for oblique angles but it is close 
+    # enough for small kappa, where the \sqrt{k_0^2 - k_par^2} 
+    # dependence dominates in the wavevector in the slab.
+    kappa = 0.02
+    eps_bb = complex(1 - kappa**2, 2 * kappa)
+    rcwa_blackbody = _rcwa_transfer_for_gap(
+        0.2,
+        num_terms=100,
+        bz_grid=(9, 9),
+        eps_slab=eps_bb,
+        slab_thickness=100.0,
+    )
+    rel_rcwa = abs(rcwa_blackbody - float(expected)) / float(abs(expected))
+    assert rel_rcwa < 5e-2, (
+        f"RCWA blackbody mismatch: got {rcwa_blackbody:.6e}, "
+        f"expected {float(expected):.6e}, rel_err={rel_rcwa:.3e}"
+    )
+
+
+def test_per_mode_trace_matches_pvh() -> None:
+    omega = float(
+        fmmax.angular_frequency_for_wavelength(  # type: ignore[attr-defined]
+            jnp.asarray(WAVELENGTH)
+        )
+    )
+    gap = 0.2
+    kpar_values = [0.5, omega * 0.5, omega * 1.5, 20.0]
+
+    for kpar in kpar_values:
+        kz0 = lifshitz._kz(1.0 + 0j, omega, kpar)
+        pvh_total = 0.0
+        trace_total = 0.0
+
+        for pol in ("s", "p"):
+            r_a, t_a = lifshitz.slab_RT(EPS_SLAB, omega, kpar, SLAB_THICKNESS, pol)
+            r_b, t_b = lifshitz.slab_RT(EPS_SLAB, omega, kpar, SLAB_THICKNESS, pol)
+            pvh_total += float(
+                lifshitz.polder_van_hove_per_mode(r_a, t_a, r_b, t_b, kz0, gap)
+            )
+            trace_total += float(
+                lifshitz.transfer_per_mode(r_a, t_a, r_b, t_b, kz0, gap, omega)
+            )
+
+        assert jnp.isclose(trace_total, pvh_total, rtol=1e-8, atol=1e-12), (
+            f"kpar={kpar:.3f}: trace={trace_total:.6e}, "
+            f"pvh={pvh_total:.6e}, ratio={trace_total / pvh_total:.6e}"
+        )
