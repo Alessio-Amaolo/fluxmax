@@ -10,4 +10,5 @@ docs/api
 .ipynb_checkpoints/
 
 .mypy_cache/
-old/
+
+tests/test_output/
