@@ -1,5 +1,5 @@
 """Near-field radiative heat transfer via RCWA trace formula."""
 
-from . import materials
+from . import materials, parallelism
 
-__all__ = ["materials"]
+__all__ = ["materials", "parallelism"]

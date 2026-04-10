@@ -94,6 +94,18 @@ def omega_nat_to_wavelength_um(
 
 
 @jaxtyped(typechecker=beartype)
+def omega_nat_to_wavelength_nat(
+    omega: Float[Array, "*shape"] | float,
+) -> Float[Array, "*shape"]:
+    r"""Convert angular frequency to wavelength in fmmax natural units.
+
+    Uses the convention ``c = 1`` so that
+
+    $$\lambda = 2\pi / \omega.$$
+    """
+    return jnp.asarray(2.0 * jnp.pi / omega)
+
+@jaxtyped(typechecker=beartype)
 def wavelength_um_to_omega_nat(
     wavelength_um: Float[Array, "*shape"] | float, *, L0_m: float = L0_M_DEFAULT
 ) -> Float[Array, "*shape"]:
