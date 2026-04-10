@@ -4,6 +4,7 @@ import numpy as np
 import pytest
 
 from fluxmax.materials import (
+    ConstantPermittivity,
     complex_refractive_index,
     omega_range_nat,
     permittivity,
@@ -109,3 +110,28 @@ def test_gold_dispersion_diagnostic_plot() -> None:
     output_path = "tests/test_output/gold_dispersion_diagnostic.png"
     figure.savefig(output_path, dpi=160)
     plt.close(figure)
+
+
+def test_constant_permittivity_broadcasts_and_has_infinite_range() -> None:
+    material = ConstantPermittivity(eps=2.5 + 0.1j, name="my_eps")
+    resolved_name, resolved_model = resolve_material(material)
+    assert resolved_name == "my_eps"
+    assert resolved_model is material
+
+    omega = jnp.asarray([0.1, 0.2, 0.3])
+    eps = permittivity(omega, material)
+    assert eps.shape == omega.shape
+    assert jnp.allclose(eps, (2.5 + 0.1j) * jnp.ones_like(omega, dtype=complex))
+
+    omega_min, omega_max = omega_range_nat(material)
+    wavelength_min, wavelength_max = wavelength_range_um(material)
+    assert omega_min == 0.0
+    assert np.isinf(omega_max)
+    assert wavelength_min == 0.0
+    assert np.isinf(wavelength_max)
+
+
+def test_scalar_numeric_material_selector_is_constant_eps() -> None:
+    omega = jnp.asarray([0.12, 0.34])
+    eps = permittivity(omega, 3.0 + 0.0j)
+    assert jnp.allclose(eps, 3.0 + 0.0j)
