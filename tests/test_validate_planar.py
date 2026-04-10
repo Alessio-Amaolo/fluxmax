@@ -120,6 +120,53 @@ def _pvh_transfer_for_gap(gap: float) -> float:
     )
 
 
+def _rcwa_transfer_single_kpar(kpar: float, *, kx: float | None = None) -> float:
+    wavelength = jnp.asarray(WAVELENGTH)
+    thickness = jnp.asarray(SLAB_THICKNESS)
+    gap_d = jnp.asarray(0.2)
+    kx_val = float(kpar) if kx is None else float(kx)
+    ky_val = 0.0
+
+    plv = fmmax.LatticeVectors(u=PITCH * fmmax.X, v=PITCH * fmmax.Y)
+    expansion = fmmax.generate_expansion(
+        primitive_lattice_vectors=plv,
+        approximate_num_terms=1,
+        truncation=fmmax.Truncation.CIRCULAR,
+    )
+    in_plane_wavevector = jnp.asarray([[kx_val, ky_val]])
+
+    eigensolve_kw = dict(
+        wavelength=wavelength,
+        in_plane_wavevector=in_plane_wavevector,
+        primitive_lattice_vectors=plv,
+        expansion=expansion,
+    )
+
+    vac_lsr = ss.eigensolve_uniform(**eigensolve_kw, permittivity=1.0 + 0j)
+    slab_lsr = ss.eigensolve_uniform(**eigensolve_kw, permittivity=EPS_SLAB)
+
+    reflection_a, transmission_a, _ = ss.body_s_matrices(
+        vac_lsr, slab_lsr, thickness, is_body_A=True
+    )
+    reflection_b, transmission_b, _ = ss.body_s_matrices(
+        vac_lsr, slab_lsr, thickness, is_body_A=False
+    )
+
+    flux_re, flux_ah, flux = ht.poynting_flux_matrices(vac_lsr)
+    sigma_a = ht.compute_sigma(reflection_a, transmission_a, flux_re, flux_ah)
+    sigma_b = ht.compute_sigma(reflection_b, transmission_b, flux_re, flux_ah)
+    propagation = ht.propagation_matrix(vac_lsr.eigenvalues, gap_d)
+    tau = ht.spectral_transfer(
+        sigma_a,
+        sigma_b,
+        propagation,
+        reflection_a,
+        reflection_b,
+        flux,
+    )
+    return float(jnp.real(jnp.sum(tau)))
+
+
 def _save_outputs(
     *, gaps: np.ndarray, pvh: np.ndarray, rcwa_by_terms: dict[int, np.ndarray]
 ) -> None:
@@ -317,4 +364,43 @@ def test_per_mode_trace_matches_pvh() -> None:
         assert jnp.isclose(trace_total, pvh_total, rtol=1e-8, atol=1e-12), (
             f"kpar={kpar:.3f}: trace={trace_total:.6e}, "
             f"pvh={pvh_total:.6e}, ratio={trace_total / pvh_total:.6e}"
+        )
+
+
+def test_rcwa_single_k_matches_lifshitz_in_prop_and_evanescent() -> None:
+    omega = float(
+        fmmax.angular_frequency_for_wavelength(  # type: ignore[attr-defined]
+            jnp.asarray(WAVELENGTH)
+        )
+    )
+    gap = 0.2
+    kpar_values = [0.5, omega * 0.99, omega * 1.01, omega * 2.0, 20.0]
+
+    for kpar in kpar_values:
+        rcwa_val = _rcwa_transfer_single_kpar(float(kpar))
+
+        kz0 = lifshitz._kz(1.0 + 0j, omega, float(kpar))
+        lif_val = 0.0
+        for pol in ("s", "p"):
+            r_a, t_a = lifshitz.slab_RT(
+                EPS_SLAB,
+                omega,
+                float(kpar),
+                SLAB_THICKNESS,
+                pol,
+            )
+            r_b, t_b = lifshitz.slab_RT(
+                EPS_SLAB,
+                omega,
+                float(kpar),
+                SLAB_THICKNESS,
+                pol,
+            )
+            lif_val += float(
+                lifshitz.transfer_per_mode(r_a, t_a, r_b, t_b, kz0, gap, omega)
+            )
+
+        assert jnp.isclose(rcwa_val, lif_val, rtol=1e-9, atol=1e-12), (
+            f"kpar={kpar:.3f}: rcwa={rcwa_val:.6e}, lifshitz={lif_val:.6e}, "
+            f"rel_err={abs(rcwa_val - lif_val) / max(abs(lif_val), 1e-30):.3e}"
         )
