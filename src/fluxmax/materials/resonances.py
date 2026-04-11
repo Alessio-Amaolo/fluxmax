@@ -3,6 +3,9 @@
 This module provides helpers used by study scripts to detect approximate
 resonance locations from material dispersion and to enrich omega grids near
 those locations.
+
+This is mostly written to study plasmonic resonances but reduce the computational
+overhead of calculating the response at every omega.
 """
 
 from __future__ import annotations
