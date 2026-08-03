@@ -20,8 +20,6 @@ import jax.numpy as jnp
 import numpy as np
 import pytest
 
-jax.config.update("jax_enable_x64", True)
-
 from fluxmax.optimization.design_tools import (
     circular_inclusion_permittivity,
 )
@@ -31,6 +29,8 @@ from fluxmax.physics.kernels import (
     make_two_body_bz_kernel,
 )
 from fluxmax.setup.two_body import make_rcwa_setup
+
+jax.config.update("jax_enable_x64", True)
 
 PITCH = 1.0
 DIAMETER = 0.5
@@ -105,7 +105,9 @@ def test_direct_vs_chunked(kernel_and_kpts, reference_direct):
         execution_mode="single_device_chunked",
         k_chunk_size=3,
     )
-    np.testing.assert_allclose(np.asarray(result), np.asarray(reference_direct), rtol=1e-10)
+    np.testing.assert_allclose(
+        np.asarray(result), np.asarray(reference_direct), rtol=1e-10
+    )
 
 
 def test_direct_vs_sharded(kernel_and_kpts, reference_direct):
@@ -120,7 +122,9 @@ def test_direct_vs_sharded(kernel_and_kpts, reference_direct):
         execution_mode="multi_device_chunked",
         k_chunk_size=4,
     )
-    np.testing.assert_allclose(np.asarray(result), np.asarray(reference_direct), rtol=1e-10)
+    np.testing.assert_allclose(
+        np.asarray(result), np.asarray(reference_direct), rtol=1e-10
+    )
 
 
 def test_omega_chunk_matches_direct(kernel_and_kpts, reference_direct):
@@ -134,7 +138,9 @@ def test_omega_chunk_matches_direct(kernel_and_kpts, reference_direct):
         execution_mode="single_device_direct",
         omega_chunk_size=1,
     )
-    np.testing.assert_allclose(np.asarray(result), np.asarray(reference_direct), rtol=1e-10)
+    np.testing.assert_allclose(
+        np.asarray(result), np.asarray(reference_direct), rtol=1e-10
+    )
 
 
 def test_omega_and_k_chunk_matches_direct(kernel_and_kpts, reference_direct):
@@ -149,7 +155,9 @@ def test_omega_and_k_chunk_matches_direct(kernel_and_kpts, reference_direct):
         k_chunk_size=3,
         omega_chunk_size=1,
     )
-    np.testing.assert_allclose(np.asarray(result), np.asarray(reference_direct), rtol=1e-10)
+    np.testing.assert_allclose(
+        np.asarray(result), np.asarray(reference_direct), rtol=1e-10
+    )
 
 
 def test_sharded_omega_and_k_chunk_matches_direct(kernel_and_kpts, reference_direct):
@@ -164,7 +172,9 @@ def test_sharded_omega_and_k_chunk_matches_direct(kernel_and_kpts, reference_dir
         k_chunk_size=4,
         omega_chunk_size=1,
     )
-    np.testing.assert_allclose(np.asarray(result), np.asarray(reference_direct), rtol=1e-10)
+    np.testing.assert_allclose(
+        np.asarray(result), np.asarray(reference_direct), rtol=1e-10
+    )
 
 
 def test_all_modes_nonzero(kernel_and_kpts):

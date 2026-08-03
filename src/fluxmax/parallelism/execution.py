@@ -101,7 +101,7 @@ def _bz_average_chunked(
     k_chunks = k_points.reshape(num_chunks, k_chunk_size, 2)
 
     @jax.checkpoint
-    def process_chunk(k_chunk):
+    def process_chunk(k_chunk: jnp.ndarray) -> jnp.ndarray:
         tau_chunk = batched_kernel(k_chunk)
         return jnp.sum(tau_chunk, axis=-1)
 
@@ -151,7 +151,7 @@ def _bz_average_sharded(
 
     # Per-chunk function
     @jax.checkpoint
-    def process_chunk(inputs):
+    def process_chunk(inputs: tuple[jnp.ndarray, jnp.ndarray]) -> jnp.ndarray:
         k_chunk, mask_chunk = inputs
         tau_chunk = batched_kernel(k_chunk)
         tau_masked = tau_chunk * mask_chunk
@@ -159,8 +159,8 @@ def _bz_average_sharded(
 
     # Mesh + shardings
     mesh = Mesh(np.array(devices), axis_names=("data",))
-    k_sharding = NamedSharding(mesh, P(None, "data", None))
-    mask_sharding = NamedSharding(mesh, P(None, "data"))
+    k_sharding = NamedSharding(mesh, P(None, "data", None))  # type: ignore[no-untyped-call]
+    mask_sharding = NamedSharding(mesh, P(None, "data"))  # type: ignore[no-untyped-call]
 
     jitted_map = jax.jit(
         lambda k_in, mask_in: jax.lax.map(process_chunk, (k_in, mask_in)),
@@ -285,7 +285,7 @@ def compute_bz_average(
     )
 
     @jax.checkpoint
-    def _process_one_chunk(pair):
+    def _process_one_chunk(pair: tuple[jnp.ndarray, jnp.ndarray]) -> jnp.ndarray:
         omega_c, eps_c = pair
         batched = _make_batched_kernel(kernel_fn, omega_c, eps_c)
         return _dispatch_k_strategy(
@@ -305,7 +305,10 @@ def compute_bz_average(
 
     # For direct / chunked the inner functions are pure JAX, so
     # lax.map gives us a JIT-compilable sequential map.
-    return jax.lax.map(_process_one_chunk, (omega_chunks, eps_chunks)).reshape(-1)
+    mapped: jnp.ndarray = jax.lax.map(
+        _process_one_chunk, (omega_chunks, eps_chunks)
+    ).reshape(-1)
+    return mapped
 
 
 # Note! If we also want to average of integrate over omega, we could
