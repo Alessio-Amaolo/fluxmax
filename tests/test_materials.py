@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import jax.numpy as jnp
 import matplotlib.pyplot as plt
 import numpy as np
@@ -12,6 +14,9 @@ from fluxmax.materials import (
     wavelength_range_um,
 )
 from fluxmax.units import si_units
+
+OUTPUT_DIR = Path(__file__).resolve().parent / "test_output"
+PLOT_PATH = OUTPUT_DIR / "gold_dispersion_diagnostic.png"
 
 
 def _expected_scalar_epsilon(omega_nat: float, material: str) -> complex:
@@ -107,8 +112,8 @@ def test_gold_dispersion_diagnostic_plot() -> None:
     axes[1].set_title("Gold permittivity vs natural omega")
     axes[1].grid(True, alpha=0.3)
 
-    output_path = "tests/test_output/gold_dispersion_diagnostic.png"
-    figure.savefig(output_path, dpi=160)
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    figure.savefig(PLOT_PATH, dpi=160)
     plt.close(figure)
 
 
