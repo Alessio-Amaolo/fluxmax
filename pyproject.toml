@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "fluxmax"
-version = "0.1.0"
+version = "0.0.1"
 description = "Near-field radiative heat transfer via RCWA trace formula."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -35,10 +35,10 @@ extend-exclude = ["*.ipynb", "build", "dist"]
 
 [tool.ruff.lint]
 # Enable general linting + docstring checks
-select = ["E", "F", "I", "D"]
-# Enforce NumPy-style docstrings
+select = ["E", "F", "I", "D", "W"]
 pydocstyle.convention = "numpy"
 ignore = ["F722"]
+fixable = ["E", "F", "I", "D", "W"]
 
 [tool.ruff.lint.per-file-ignores]
 # Tests aren't required to be fully docstring-clean; also ignore long explanatory lines.
