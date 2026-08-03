@@ -1,0 +1,33 @@
+name: "CI: Tests"
+
+on:
+  pull_request:
+    branches: [ "main" ]
+  push:
+    branches: [ "main" ]
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache conda packages
+        uses: actions/cache@v4
+        with:
+          path: ~/conda_pkgs_dir
+          key: conda-${{ runner.os }}-${{ hashFiles('fluxmax-ci.yml', 'pyproject.toml') }}
+
+      - name: Set up Mamba
+        uses: conda-incubator/setup-miniconda@v3
+        with:
+          activate-environment: fluxmax-ci
+          environment-file: fluxmax-ci.yml
+          python-version: "3.11"
+          auto-activate-base: false
+          use-mamba: true
+          pkgs-dirs: ~/conda_pkgs_dir
+
+      - name: Run Pytest
+        shell: bash -l {0}
+        run: pytest -q

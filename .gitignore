@@ -12,3 +12,9 @@ docs/api
 .mypy_cache/
 
 tests/test_output/
+
+*.npy
+*.png
+*.npz
+*.sh
+*.json

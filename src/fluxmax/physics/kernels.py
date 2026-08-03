@@ -14,6 +14,8 @@ build a custom driver. See parallelism/ for examples.
 
 from __future__ import annotations
 
+from collections.abc import Callable
+
 import jax
 import jax.numpy as jnp
 from beartype import beartype
@@ -23,7 +25,6 @@ from jaxtyping import Array, Complex, Float, jaxtyped
 from fluxmax.physics import heat_transfer as ht
 from fluxmax.setup import two_body as ss
 from fluxmax.units.si_units import omega_nat_to_wavelength_nat
-
 
 
 @jaxtyped(typechecker=beartype)
@@ -112,7 +113,7 @@ def make_two_body_bz_kernel(
     slab_thickness: float,
     gap: float,
     eps_gap: complex = 1.0 + 0.0j,
-):
+) -> Callable[[jnp.ndarray, jnp.ndarray, jnp.ndarray], jnp.ndarray]:
     """Build a single-omega BZ kernel closure for the two-body geometry.
 
     Wraps :func:`two_body_tau_kernel` to build a function of the form
@@ -297,7 +298,6 @@ def frequency_integrated_two_body_tau(
 
 
 __all__ = [
-    "omega_to_wavelength",
     "two_body_tau_kernel",
     "two_body_tau_per_k",
     "two_body_k_integrated_tau",

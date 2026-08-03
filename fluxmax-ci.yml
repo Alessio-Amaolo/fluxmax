@@ -1,0 +1,15 @@
+name: fluxmax-ci
+channels:
+  - conda-forge
+  - nodefaults
+dependencies:
+  - python=3.11
+  - pymeep
+  - jax
+  - jaxlib  # cpu only
+  - optax
+  - numpy
+  - beartype
+  - pip
+  - pip:
+    - .[dev]

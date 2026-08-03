@@ -1,8 +1,8 @@
 """Meep-backed material dispersion utilities."""
 
 from .meep_materials import (
-    ConstantPermittivity,
     MATERIAL_ALIASES,
+    ConstantPermittivity,
     available_materials,
     complex_refractive_index,
     meep_frequency_from_omega_nat,

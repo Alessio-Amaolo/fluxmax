@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-import numbers
 from typing import TypeAlias
 
 import jax.numpy as jnp
@@ -17,7 +16,7 @@ from fluxmax.units import si_units
 
 @dataclass(frozen=True, slots=True)
 class ConstantPermittivity:
-    """Frequency-independent isotropic permittivity material.
+    r"""Frequency-independent isotropic permittivity material.
 
     This is a lightweight, non-meep material spec that can be passed anywhere
     a meep material name/medium is accepted by this module.
@@ -85,11 +84,11 @@ def resolve_material(material: MaterialSpec) -> tuple[str, mp.Medium]:
     if isinstance(material, ConstantPermittivity):
         return material.name, material
 
-    if isinstance(material, numbers.Number) and not isinstance(material, bool):
-        eps_value = complex(material)
-        return "constant_eps", ConstantPermittivity(eps=eps_value)
+    if isinstance(material, (int, float, complex)) and not isinstance(material, bool):
+        return "constant_eps", ConstantPermittivity(eps=complex(material))
 
-    canonical_name = MATERIAL_ALIASES.get(str(material).strip().lower(), str(material).strip())
+    requested = str(material).strip()
+    canonical_name = MATERIAL_ALIASES.get(requested.lower(), requested)
     medium = getattr(meep_materials, canonical_name, None)
     if not isinstance(medium, mp.Medium):
         available = ", ".join(available_materials()) or "none"

@@ -30,16 +30,19 @@ from typing import Callable
 import jax
 import jax.numpy as jnp
 import numpy as np
-from jax.sharding import Mesh, NamedSharding, PartitionSpec as P
+from jax.sharding import Mesh, NamedSharding
+from jax.sharding import PartitionSpec as P
 
 # Kernel type: (omega_scalar, eps_2d, k_points) -> (n_k,)
 KernelFn = Callable[[jnp.ndarray, jnp.ndarray, jnp.ndarray], jnp.ndarray]
 
-VALID_MODES = frozenset({
-    "single_device_direct",
-    "single_device_chunked",
-    "multi_device_chunked",
-})
+VALID_MODES = frozenset(
+    {
+        "single_device_direct",
+        "single_device_chunked",
+        "multi_device_chunked",
+    }
+)
 
 
 def flatten_k_points(in_plane_wavevectors: jnp.ndarray) -> jnp.ndarray:
@@ -58,10 +61,13 @@ def _make_batched_kernel(
     eps_chunk: jnp.ndarray,
 ) -> _BatchedKernelFn:
     """Wrap a single-omega kernel to vmap over an omega chunk."""
+
     def batched(k_points: jnp.ndarray) -> jnp.ndarray:
         return jax.vmap(lambda w, e: kernel_fn(w, e, k_points))(
-            omega_chunk, eps_chunk,
+            omega_chunk,
+            eps_chunk,
         )
+
     return batched
 
 
@@ -95,7 +101,7 @@ def _bz_average_chunked(
     k_chunks = k_points.reshape(num_chunks, k_chunk_size, 2)
 
     @jax.checkpoint
-    def process_chunk(k_chunk):
+    def process_chunk(k_chunk: jnp.ndarray) -> jnp.ndarray:
         tau_chunk = batched_kernel(k_chunk)
         return jnp.sum(tau_chunk, axis=-1)
 
@@ -116,9 +122,7 @@ def _bz_average_sharded(
     n_k_real = int(k_points.shape[0])
 
     if global_chunk_size < 1:
-        raise ValueError(
-            f"global_chunk_size must be >= 1, got {global_chunk_size}"
-        )
+        raise ValueError(f"global_chunk_size must be >= 1, got {global_chunk_size}")
 
     devices = jax.devices()
     n_devices = len(devices)
@@ -147,7 +151,7 @@ def _bz_average_sharded(
 
     # Per-chunk function
     @jax.checkpoint
-    def process_chunk(inputs):
+    def process_chunk(inputs: tuple[jnp.ndarray, jnp.ndarray]) -> jnp.ndarray:
         k_chunk, mask_chunk = inputs
         tau_chunk = batched_kernel(k_chunk)
         tau_masked = tau_chunk * mask_chunk
@@ -155,13 +159,11 @@ def _bz_average_sharded(
 
     # Mesh + shardings
     mesh = Mesh(np.array(devices), axis_names=("data",))
-    k_sharding = NamedSharding(mesh, P(None, "data", None))
-    mask_sharding = NamedSharding(mesh, P(None, "data"))
+    k_sharding = NamedSharding(mesh, P(None, "data", None))  # type: ignore[no-untyped-call]
+    mask_sharding = NamedSharding(mesh, P(None, "data"))  # type: ignore[no-untyped-call]
 
     jitted_map = jax.jit(
-        lambda k_in, mask_in: jax.lax.map(
-            process_chunk, (k_in, mask_in)
-        ),
+        lambda k_in, mask_in: jax.lax.map(process_chunk, (k_in, mask_in)),
         in_shardings=(k_sharding, mask_sharding),
     )
 
@@ -243,9 +245,7 @@ def compute_bz_average(
         omega_chunk_size = n_omega  # (vmap everything at once)
 
     if omega_chunk_size < 1:
-        raise ValueError(
-            f"omega_chunk_size must be >= 1, got {omega_chunk_size}"
-        )
+        raise ValueError(f"omega_chunk_size must be >= 1, got {omega_chunk_size}")
     if n_omega % omega_chunk_size != 0:
         raise ValueError(
             f"n_omega ({n_omega}) must be a multiple of "
@@ -265,6 +265,7 @@ def compute_bz_average(
         total_chunks = n_omega_chunks * n_k_chunks
         if total_chunks % n_devices != 0:
             import warnings
+
             warnings.warn(
                 f"Total work chunks ({n_omega_chunks} omega × "
                 f"{n_k_chunks} k = {total_chunks}) is not divisible "
@@ -278,15 +279,20 @@ def compute_bz_average(
     num_omega_chunks = n_omega // omega_chunk_size
     omega_chunks = omega_1d.reshape(num_omega_chunks, omega_chunk_size)
     eps_chunks = eps_omega.reshape(
-        num_omega_chunks, omega_chunk_size, *eps_omega.shape[1:],
+        num_omega_chunks,
+        omega_chunk_size,
+        *eps_omega.shape[1:],
     )
 
     @jax.checkpoint
-    def _process_one_chunk(pair):
+    def _process_one_chunk(pair: tuple[jnp.ndarray, jnp.ndarray]) -> jnp.ndarray:
         omega_c, eps_c = pair
         batched = _make_batched_kernel(kernel_fn, omega_c, eps_c)
         return _dispatch_k_strategy(
-            batched, k_points, execution_mode, k_chunk_size,
+            batched,
+            k_points,
+            execution_mode,
+            k_chunk_size,
         )
 
     if execution_mode == "multi_device_chunked":
@@ -294,16 +300,18 @@ def compute_bz_average(
         # nested inside lax.map.  Use a Python loop instead.
         results = []
         for i in range(num_omega_chunks):
-            results.append(
-                _process_one_chunk((omega_chunks[i], eps_chunks[i]))
-            )
+            results.append(_process_one_chunk((omega_chunks[i], eps_chunks[i])))
         return jnp.concatenate(results, axis=0)
 
     # For direct / chunked the inner functions are pure JAX, so
     # lax.map gives us a JIT-compilable sequential map.
-    return jax.lax.map(_process_one_chunk, (omega_chunks, eps_chunks)).reshape(-1)
+    mapped: jnp.ndarray = jax.lax.map(
+        _process_one_chunk, (omega_chunks, eps_chunks)
+    ).reshape(-1)
+    return mapped
 
-# Note! If we also want to average of integrate over omega, we could 
+
+# Note! If we also want to average of integrate over omega, we could
 # do this more efficiently instead of having a python for loop.
 # Something to keep in find for the future.
 

@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import jax.numpy as jnp
 import numpy as np
-import warnings
 
 from fluxmax.units import si_units
 
@@ -57,7 +56,9 @@ def real_epsilon_crossings(
         If the requested omega range does not overlap the material data range.
     """
     _, medium = meep_materials.resolve_material(material)
-    medium_omega_min, medium_omega_max = meep_materials.omega_range_nat(medium, L0_m=L0_m)
+    medium_omega_min, medium_omega_max = meep_materials.omega_range_nat(
+        medium, L0_m=L0_m
+    )
     omega_min = max(float(omega_range_nat[0]), float(medium_omega_min))
     omega_max = min(float(omega_range_nat[1]), float(medium_omega_max))
     if omega_min >= omega_max:
@@ -141,7 +142,9 @@ def make_resonance_aware_omega_grid(
     """
     _, medium = meep_materials.resolve_material(material)
     wavelength_min_um, wavelength_max_um = meep_materials.wavelength_range_um(medium)
-    medium_omega_min, medium_omega_max = meep_materials.omega_range_nat(medium, L0_m=L0_m)
+    medium_omega_min, medium_omega_max = meep_materials.omega_range_nat(
+        medium, L0_m=L0_m
+    )
 
     omega_min = max(float(omega_study_range[0]), float(medium_omega_min))
     omega_max = min(float(omega_study_range[1]), float(medium_omega_max))

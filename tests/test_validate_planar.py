@@ -7,14 +7,13 @@ Mostly generates plots and diagnostics, but does check that for high enough
 number of Fourier terms, the values agree.
 """
 from pathlib import Path
-from typing import cast
 
 import jax
 import jax.numpy as jnp
 import matplotlib.pyplot as plt
 import numpy as np
 
-jax.config.update("jax_enable_x64", True)  # type: ignore[no-untyped-call]
+jax.config.update("jax_enable_x64", True)
 
 import fmmax  # noqa: E402
 
@@ -127,11 +126,11 @@ def _rcwa_transfer_single_kpar(kpar: float, *, kx: float | None = None) -> float
     kx_val = float(kpar) if kx is None else float(kx)
     ky_val = 0.0
 
-    plv = fmmax.LatticeVectors(u=PITCH * fmmax.X, v=PITCH * fmmax.Y)
-    expansion = fmmax.generate_expansion(
+    plv = fmmax.LatticeVectors(u=PITCH * fmmax.X, v=PITCH * fmmax.Y)  # type: ignore[attr-defined]
+    expansion = fmmax.generate_expansion(  # type: ignore[attr-defined]
         primitive_lattice_vectors=plv,
         approximate_num_terms=1,
-        truncation=fmmax.Truncation.CIRCULAR,
+        truncation=fmmax.Truncation.CIRCULAR,  # type: ignore[attr-defined]
     )
     in_plane_wavevector = jnp.asarray([[kx_val, ky_val]])
 
@@ -225,9 +224,7 @@ def test_planar_trace_matches_pvh_and_writes_diagnostics() -> None:
         )
 
     rcwa_by_terms: dict[int, np.ndarray] = {}
-    unique_bz_grids = [
-        cast(tuple[int, int], grid) for grid in sorted(set(BZ_GRID_BY_GAP.values()))
-    ]
+    unique_bz_grids = sorted(set(BZ_GRID_BY_GAP.values()))
     for terms in TERMS_SWEEP:
         worst_estimated_gb = max(
             _estimated_peak_memory_gb(actual_num_terms=terms, bz_grid=bz_grid)
@@ -314,12 +311,12 @@ def test_blackbody_limit_for_pvh_and_rcwa() -> None:
         f"expected {float(expected):.6e}, rel_err={rel_pvh:.3e}"
     )
 
-    # r = -ikappa / (2 + ikappa) for a slab with n = 1 + iκ, 
+    # r = -ikappa / (2 + ikappa) for a slab with n = 1 + iκ,
     # so κ = 0.02 gives R ≈ 0.01, which is small.
     # Because the slab is also thick, t goes to zero as well.
     # Overall this will approach a black body.
-    # This is an approximation for oblique angles but it is close 
-    # enough for small kappa, where the \sqrt{k_0^2 - k_par^2} 
+    # This is an approximation for oblique angles but it is close
+    # enough for small kappa, where the \sqrt{k_0^2 - k_par^2}
     # dependence dominates in the wavevector in the slab.
     kappa = 0.02
     eps_bb = complex(1 - kappa**2, 2 * kappa)

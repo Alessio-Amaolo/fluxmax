@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "fluxmax"
-version = "0.1.0"
+version = "0.0.1"
 description = "Near-field radiative heat transfer via RCWA trace formula."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -31,14 +31,15 @@ where = ["src"]
 
 [tool.ruff]
 line-length = 88
-extend-exclude = ["*.ipynb", "build", "dist"]
+# examples/ holds exploratory research scripts; they are not held to package standards.
+extend-exclude = ["*.ipynb", "build", "dist", "examples"]
 
 [tool.ruff.lint]
 # Enable general linting + docstring checks
-select = ["E", "F", "I", "D"]
-# Enforce NumPy-style docstrings
+select = ["E", "F", "I", "D", "W"]
 pydocstyle.convention = "numpy"
 ignore = ["F722"]
+fixable = ["E", "F", "I", "D", "W"]
 
 [tool.ruff.lint.per-file-ignores]
 # Tests aren't required to be fully docstring-clean; also ignore long explanatory lines.
@@ -54,4 +55,19 @@ check_untyped_defs = true
 warn_unused_ignores = true
 warn_redundant_casts = true
 warn_unused_configs = true
-exclude = ["build", "docs"]
+exclude = ["build", "docs", "examples"]
+# tests/ has no __init__.py; these two make mypy name its modules `tests.*`
+# (relative to the repo root) so the per-module override below can match them.
+mypy_path = "src"
+explicit_package_bases = true
+
+[[tool.mypy.overrides]]
+# Tests are exempt from the annotation-strictness rules, mirroring the ruff
+# per-file-ignores above. Type errors in test bodies are still reported.
+module = ["tests.*"]
+disallow_untyped_defs = false
+disallow_incomplete_defs = false
+disallow_untyped_calls = false
+# The tests share eigensolve arguments via `kw = dict(...)` / `**kw`, which mypy
+# widens to dict[str, object] and cannot check through. Everything else still is.
+disable_error_code = ["arg-type"]
