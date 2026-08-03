@@ -8,7 +8,9 @@ per diffraction order. In this basis the Poynting-flux bilinear form is a
 full, non-diagonal matrix ``F = A† φ`` rather than simply ``diag(kz)``. The
 trace formula is
 
-    ``T = Tr[P† D† Σ_A D P (F†)^-1 Σ_B F^-1]``
+    ``T = Tr[P† D† Σ_A D P (F†)^-1 Σ_Bᵀ F^-1]``
+
+(note the transpose on the emitter's Σ — see :func:`spectral_transfer`)
 
 Units
 -----
@@ -162,7 +164,7 @@ def spectral_transfer(
     r"""
     Compute the spectral transmission factor.
 
-        Tr[ P† D† Σ_A D P (F†)⁻¹ Σ_B F⁻¹ ],
+        Tr[ P† D† Σ_A D P (F†)⁻¹ Σ_Bᵀ F⁻¹ ],
 
     where
 
@@ -173,7 +175,8 @@ def spectral_transfer(
 
     In the TE/TM plane-wave basis F is diagonal with entries ω/kz (TE) and
     kz/ω (TM), and the formula reduces to the standard Polder-Van Hove
-    expression with |K|⁻¹ = diag(1/|kz|).
+    expression with |K|⁻¹ = diag(1/|kz|) and Σ_B → Σ_Bᵀ (for planar slabs
+    Σ_B is diagonal and the transpose is invisible).
 
     The physical spectral heat flux is
 
@@ -213,9 +216,15 @@ def spectral_transfer(
     P_dag = _adjoint(P)
     D_dag = _adjoint(D)
 
-    # Noise correlator: (F†)⁻¹ Σ_B F⁻¹
+    # Noise correlator: (F†)⁻¹ Σ_Bᵀ F⁻¹. The FDT correlator carries the
+    # TRANSPOSE of the emitter's absorption operator (conjugate sits on the
+    # CAVEAT: for unit cells with no in-plane symmetry, fixed-k reciprocity
+    # does not hold at all (reciprocity pairs k with -k); there the correct
+    # correlator needs Sigma(-k) with a G -> -G channel relabeling, which
+    # this k-local function cannot express.
     F_inv = jnp.linalg.solve(F, Id)
-    sigma_B_tilde = _adjoint(F_inv) @ sigma_B @ F_inv
+    sigma_B_T = jnp.swapaxes(sigma_B, -2, -1)
+    sigma_B_tilde = _adjoint(F_inv) @ sigma_B_T @ F_inv
 
     W = P_dag @ D_dag @ sigma_A @ D @ P @ sigma_B_tilde
     return _trace(W)
@@ -261,10 +270,13 @@ def spectral_heat_flux(
     In natural units ($\hbar = k_B = 1$), the spectral flux per area is
 
     $$
-    \Phi(\omega)/A = \omega\Theta(\omega, T)
+    \Phi(\omega)/A = \frac{\omega\Theta(\omega, T)}{2\pi}
     \frac{1}{N_{\mathrm{BZ}} A_{\mathrm{cell}}}
-    \sum_k \tau(\omega, k).
+    \sum_k \tau(\omega, k),
     $$
+
+    where the $1/2\pi$ belongs to the $\hbar\omega\Theta/2\pi$ prefactor of the
+    trace formula, and
 
     Parameters
     ----------
@@ -292,7 +304,7 @@ def spectral_heat_flux(
     choice of length unit ``L0``; see ``si_units.py``.
     """
     theta = bose_einstein(omega_nat, T_nat)
-    prefactor = omega_nat * theta
+    prefactor = omega_nat * theta / (2.0 * jnp.pi)
     bz_avg = jnp.sum(normalized_transfer) / n_bz
     return prefactor * bz_avg / cell_area
 
