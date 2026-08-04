@@ -163,12 +163,31 @@ def eigensolve_patterned(
     primitive_lattice_vectors: LatticeVectors,
     expansion: Expansion,
     permittivity_array: jnp.ndarray,
-    formulation: Formulation = Formulation.JONES_FOURIER,
+    formulation: Formulation = Formulation.FFT,
 ) -> LayerSolveResult:
     """Eigensolve a patterned layer from a 2-D permittivity array.
 
     Same as above but now the permittivity is given by a 2-D array representing the
     spatial distribution of permittivity within the unit cell.
+
+    Parameters
+    ----------
+    formulation : Formulation, optional
+        RCWA formulation used by fmmax. Default is ``Formulation.FFT``, which
+        is *not* fmmax's own default of ``Formulation.JONES_FOURIER``.
+
+    Notes
+    -----
+    The default is ``FFT`` because this package exists to do inverse design, and
+    the vector formulations do not return the gradient of the objective they evaluate:
+    ``fmmax.vector.compute_tangent_field`` calls ``jax.lax.stop_gradient`` on
+    the permittivity, so ``jax.grad`` differentiates at *fixed* tangent vector
+    field.
+
+    The tradeoff is that ``FFT`` converges more slowly in the number of retained
+    Fourier orders: the vector formulations exist precisely to accelerate that
+    convergence. So for a forward-only sweep, where no gradient
+    is taken, passing ``Formulation.JONES_FOURIER`` explicitly is worthwhile.
     """
     return eigensolve_isotropic_media(
         wavelength=wavelength,

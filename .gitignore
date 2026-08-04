@@ -18,3 +18,5 @@ tests/test_output/
 *.npz
 *.sh
 *.json
+
+examples/

@@ -20,6 +20,7 @@ This module uses the natural-unit convention:
 - All lengths are expressed in an arbitrary base unit ``L0``.
 """
 
+import chex
 import jax.numpy as jnp
 from beartype import beartype
 from fmmax._fmm_result import LayerSolveResult
@@ -61,6 +62,11 @@ def poynting_flux_matrices(
         Full (complex, generally non-Hermitian) flux matrix
         $\mathcal F = A^\dagger \phi$, shape ``(..., 2N, 2N)``.  Needed by
         :func:`spectral_transfer` for the noise-correlator normalization.
+
+    Notes
+    -----
+    ``1 / (omega * q)`` is singular for a gap channel sitting on the light line,
+    ``|k_par + G| = omega``, where fmmax's S-matrices are NaN too.
     """
     q = vac_lsr.eigenvalues
     phi = vac_lsr.eigenvectors
@@ -73,6 +79,7 @@ def poynting_flux_matrices(
 
     F_re = (F + _adjoint(F)) / 2
     F_ah = (F - _adjoint(F)) / (2j)
+    chex.assert_tree_all_finite(F)
     return F_re, F_ah, F
 
 
@@ -173,6 +180,8 @@ def spectral_transfer(
     and F = A† φ is the full Poynting-flux matrix from
     :func:`poynting_flux_matrices`.
 
+    This computes transfer from body B to body A.
+
     In the TE/TM plane-wave basis F is diagonal with entries ω/kz (TE) and
     kz/ω (TM), and the formula reduces to the standard Polder-Van Hove
     expression with |K|⁻¹ = diag(1/|kz|) and Σ_B → Σ_Bᵀ (for planar slabs
@@ -227,7 +236,10 @@ def spectral_transfer(
     sigma_B_tilde = _adjoint(F_inv) @ sigma_B_T @ F_inv
 
     W = P_dag @ D_dag @ sigma_A @ D @ P @ sigma_B_tilde
-    return _trace(W)
+    tau = _trace(W)
+    # Catches singular D or F, and any NaN inherited from the layer solves.
+    chex.assert_tree_all_finite(tau)
+    return tau
 
 
 @jaxtyped(typechecker=beartype)
@@ -259,7 +271,7 @@ def bose_einstein(
 
 @jaxtyped(typechecker=beartype)
 def spectral_heat_flux(
-    normalized_transfer: Float[Array, "*shape"],
+    transfer_bz_sum: Float[Array, "*shape"] | float,
     omega_nat: Float[Array, "*shape"] | float,
     T_nat: Float[Array, "*shape"] | float,
     cell_area: Float[Array, ""] | float,
@@ -276,14 +288,18 @@ def spectral_heat_flux(
     $$
 
     where the $1/2\pi$ belongs to the $\hbar\omega\Theta/2\pi$ prefactor of the
-    trace formula, and
+    trace formula, and $\frac{1}{N_{\mathrm{BZ}} A_{\mathrm{cell}}}\sum_k$ is
+    the Brillouin-zone measure $\int_{\mathrm{BZ}} d^2k/(2\pi)^2$ evaluated on
+    the sample grid (the BZ area is $(2\pi)^2 / A_{\mathrm{cell}}$).
 
     Parameters
     ----------
-    normalized_transfer : Float[Array, "*shape"]
-        Transfer values already summed over Brillouin-zone points, or an
-        array of per-$k$ values. This function applies the BZ average
-        ``(1 / n_bz) * sum_k``.
+    transfer_bz_sum : Float[Array, "*shape"] | float
+        $\sum_k \tau(\omega, k)$: the transfer already summed -- not averaged --
+        over the ``n_bz`` Brillouin-zone sample points, for each frequency. Use
+        e.g. ``two_body_k_integrated_tau(..., average=False)``. This function
+        applies no reduction of its own, so it broadcasts elementwise over a
+        batch of frequencies.
     omega_nat : Float[Array, "*shape"] | float
         Angular frequency in units of ``1/L0``.
     T_nat : Float[Array, "*shape"] | float
@@ -302,11 +318,15 @@ def spectral_heat_flux(
     -----
     Conversion to SI requires an external scaling that depends on the
     choice of length unit ``L0``; see ``si_units.py``.
+
+    This function used to reduce its first argument with ``jnp.sum``, which
+    summed over the frequency axis as well when called with a batch of
+    frequencies (and could not accept per-$k$ values at all, since the return
+    shape is tied to ``omega_nat``). The BZ sum is now the caller's job.
     """
     theta = bose_einstein(omega_nat, T_nat)
     prefactor = omega_nat * theta / (2.0 * jnp.pi)
-    bz_avg = jnp.sum(normalized_transfer) / n_bz
-    return prefactor * bz_avg / cell_area
+    return prefactor * (transfer_bz_sum / n_bz) / cell_area
 
 
 @jaxtyped(typechecker=beartype)
