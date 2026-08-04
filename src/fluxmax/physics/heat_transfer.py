@@ -118,7 +118,7 @@ def compute_sigma(
     R_dag = _adjoint(R)
     T_dag = _adjoint(T)
 
-    sigma = F_re - R_dag @ F_re @ R - 1j * (F_ah @ R - R_dag @ F_ah) - T_dag @ F_re @ T
+    sigma = F_re - R_dag @ F_re @ R + 1j * (F_ah @ R - R_dag @ F_ah) - T_dag @ F_re @ T
     return sigma
 
 
