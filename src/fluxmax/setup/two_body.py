@@ -83,7 +83,18 @@ def make_rcwa_setup(
        k-points in the reciprocal space corresponding to the specified
        `brillouin_grid_shape`.
     """
-    primitive_lattice_vectors = LatticeVectors(u=pitch * X, v=pitch * Y)
+    # fmmax hard-codes X and Y as float32 (fmmax/_basis.py), and `pitch * X` keeps
+    # that dtype even with jax_enable_x64, so the reciprocal lattice
+    # would carry a ~1e-8 relative
+    # error. The zeroth order stays exact, so single-order tests cannot see it,
+    # but it caps multi-order agreement with Polder-Van Hove at ~1e-7 instead of
+    # ~1e-16. Rebuild at the ambient float precision.
+
+    dtype = jnp.result_type(float)
+    primitive_lattice_vectors = LatticeVectors(
+        u=pitch * jnp.asarray(X, dtype=dtype),
+        v=pitch * jnp.asarray(Y, dtype=dtype),
+    )
     expansion = generate_expansion(
         primitive_lattice_vectors=primitive_lattice_vectors,
         approximate_num_terms=approximate_num_terms,

@@ -6,6 +6,7 @@ PVH result is computed using the implementation in fluxmax.physics.lifshitz.
 Mostly generates plots and diagnostics, but does check that for high enough
 number of Fourier terms, the values agree.
 """
+
 from pathlib import Path
 
 import jax
@@ -24,7 +25,7 @@ from fluxmax.setup import two_body as ss  # noqa: E402
 EPS_SLAB = 4.0 + 0.5j
 WAVELENGTH = 1.0
 SLAB_THICKNESS = 0.5
-PITCH = 1.0
+PITCH = 0.93  # do not make 1.0 because it falls on BZ boundary
 GAPS = [0.1, 0.2, 0.5, 1.0]
 
 APPROXIMATE_NUM_TERMS_BY_GAP = {0.1: 200, 0.2: 50, 0.5: 50, 1.0: 50}
@@ -272,7 +273,9 @@ def test_lossless_planar_transfer_is_zero() -> None:
     )
 
     assert abs(pvh) < threshold, f"PVH should vanish for lossless slab, got {pvh:.3e}"
-    assert abs(rcwa) < threshold, f"RCWA should vanish for lossless slab, got {rcwa:.3e}"
+    assert abs(rcwa) < threshold, (
+        f"RCWA should vanish for lossless slab, got {rcwa:.3e}"
+    )
 
 
 def test_blackbody_limit_for_pvh_and_rcwa() -> None:

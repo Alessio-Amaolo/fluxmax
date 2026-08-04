@@ -8,9 +8,9 @@ all of the emitter's absorption, so the truncation error at small gap is the
 practical limit of the method.
 
 This test pins the behavior: at gap = 0.1 lambda, the relative error of the
-BZ-summed RCWA transfer against the k-integrated Polder-Van Hove reference
-must decrease monotonically with the truncation order and reach the tolerance
-of the existing planar validation at the finest truncation.
+BZ-summed RCWA transfer against the k-integrated Polder-Van Hove reference must
+fall by orders of magnitude as the truncation grows, and reach the tolerance of
+the existing planar validation at the finest truncation.
 """
 
 import jax
@@ -25,13 +25,14 @@ jax.config.update("jax_enable_x64", True)
 
 
 WAVELENGTH = 1.0
-PITCH = 1.0
+PITCH = 0.93  # do not make 1.0 because it falls on BZ boundary
 GAP = 0.1
 EPS_SLAB = 4.0 + 0.5j
 THICKNESS = 0.5
-BZ_GRID = (3, 3)
+BZ_GRID = (7, 7)  # fine enough that truncation, not BZ quadrature, is the limit
 TERMS_SWEEP = [10, 50, 200]
-FINAL_TOL = 0.02
+FINAL_TOL = 5e-3
+QUADRATURE_FLOOR = 2e-3
 OMEGA = 2.0 * np.pi / WAVELENGTH
 
 
@@ -78,9 +79,23 @@ def test_convergence_in_orders_at_small_gap():
     for terms in TERMS_SWEEP:
         value = _rcwa_transfer(terms)
         errors.append(abs(value - reference) / abs(reference))
-    for coarse, fine in zip(errors, errors[1:]):
-        assert fine < coarse, f"error not decreasing with truncation: {errors}"
+    # Each step must improve, unless it has already reached the quadrature floor
+    # where more orders cannot help (see the module docstring).
+    for (coarse_n, coarse), (fine_n, fine) in zip(
+        zip(TERMS_SWEEP, errors), zip(TERMS_SWEEP[1:], errors[1:])
+    ):
+        assert fine < coarse or fine < QUADRATURE_FLOOR, (
+            f"error grew from {coarse:.3e} at {coarse_n} terms to {fine:.3e} at "
+            f"{fine_n} terms, and {fine:.3e} is above the {QUADRATURE_FLOOR:g} "
+            f"quadrature floor, so this is a real loss of accuracy: {errors}"
+        )
     assert errors[-1] < FINAL_TOL, (
         f"finest truncation ({TERMS_SWEEP[-1]} terms) error {errors[-1]:.3e} "
         f"exceeds {FINAL_TOL}; errors = {errors}"
+    )
+    # Teeth: the coarsest truncation must be far from the floor, otherwise the
+    # sweep starts already converged and asserts nothing about truncation.
+    assert errors[0] > 10 * QUADRATURE_FLOOR, (
+        f"coarsest truncation ({TERMS_SWEEP[0]} terms) error {errors[0]:.3e} is "
+        f"already near the {QUADRATURE_FLOOR:g} floor; the sweep has no teeth"
     )

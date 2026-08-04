@@ -1,11 +1,11 @@
 """The trace formula must not care where the gap reference planes are put.
 
 Padding body A with a vacuum spacer of thickness s on its gap side and
-shrinking the gap to d - s describes the same physical system, so
+shrinking the gap to d - s describes the *same physical system*, so
 
     tau(A + vac(s), B, d - s) = tau(A, B, d)
 
-must hold identically, and likewise for body B, and for both at once.
+must hold identically -- and likewise for body B, and for both at once.
 """
 
 import jax
@@ -19,7 +19,7 @@ from fluxmax.setup import two_body as ss
 jax.config.update("jax_enable_x64", True)
 
 WAVELENGTH = 1.0
-PITCH = 1.0
+PITCH = 0.93  # do not make 1.0 because it falls on BZ boundary
 GAP = 0.2
 SHIFT_A = 0.07
 SHIFT_B = 0.05
