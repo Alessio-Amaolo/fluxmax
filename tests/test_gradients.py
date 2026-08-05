@@ -30,7 +30,7 @@ import inspect
 import jax
 import jax.numpy as jnp
 import numpy as np
-from fmmax.fmm import Formulation  # type: ignore[attr-defined] # noqa: E402
+from fmmax.fmm import Formulation  # type: ignore[attr-defined]
 
 from fluxmax.optimization.design_tools import (
     metallic_eps_from_density,
@@ -39,8 +39,6 @@ from fluxmax.optimization.design_tools import (
 from fluxmax.physics import heat_transfer as ht
 from fluxmax.physics import kernels
 from fluxmax.setup import two_body as ss
-
-jax.config.update("jax_enable_x64", True)
 
 PITCH = 1.0
 NX = 16

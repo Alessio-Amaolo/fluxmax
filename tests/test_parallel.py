@@ -15,7 +15,6 @@ import os
 os.environ["XLA_FLAGS"] = "--xla_force_host_platform_device_count=4"
 os.environ["JAX_PLATFORMS"] = "cpu"
 
-import jax
 import jax.numpy as jnp
 import numpy as np
 import pytest
@@ -29,8 +28,6 @@ from fluxmax.physics.kernels import (
     make_two_body_bz_kernel,
 )
 from fluxmax.setup.two_body import make_rcwa_setup
-
-jax.config.update("jax_enable_x64", True)
 
 PITCH = 1.0
 DIAMETER = 0.5

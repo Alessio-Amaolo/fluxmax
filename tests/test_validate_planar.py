@@ -9,18 +9,14 @@ number of Fourier terms, the values agree.
 
 from pathlib import Path
 
-import jax
+import fmmax
 import jax.numpy as jnp
 import matplotlib.pyplot as plt
 import numpy as np
 
-jax.config.update("jax_enable_x64", True)
-
-import fmmax  # noqa: E402
-
-import fluxmax.physics.lifshitz as lifshitz  # noqa: E402
-from fluxmax.physics import heat_transfer as ht  # noqa: E402
-from fluxmax.setup import two_body as ss  # noqa: E402
+import fluxmax.physics.lifshitz as lifshitz
+from fluxmax.physics import heat_transfer as ht
+from fluxmax.setup import two_body as ss
 
 EPS_SLAB = 4.0 + 0.5j
 WAVELENGTH = 1.0
