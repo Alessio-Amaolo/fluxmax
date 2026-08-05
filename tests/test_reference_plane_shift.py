@@ -8,15 +8,12 @@ shrinking the gap to d - s describes the *same physical system*, so
 must hold identically -- and likewise for body B, and for both at once.
 """
 
-import jax
 import jax.numpy as jnp
 import numpy as np
 from fmmax.scattering import stack_s_matrix
 
 from fluxmax.physics import heat_transfer as ht
 from fluxmax.setup import two_body as ss
-
-jax.config.update("jax_enable_x64", True)
 
 WAVELENGTH = 1.0
 PITCH = 0.93  # do not make 1.0 because it falls on BZ boundary
