@@ -32,7 +32,7 @@ that integrates to sigma T^4.
 
 import jax.numpy as jnp
 import numpy as np
-from _helpers import K_GENERIC, centered_grating, net_flux, squeeze_batch
+from _helpers import K_GENERIC, centered_grating, net_flux
 
 from fluxmax.physics import heat_transfer as ht
 from fluxmax.setup import two_body as ss
@@ -112,7 +112,7 @@ def _flux_orthonormal_incidences(vac, F_re) -> np.ndarray:
     """Columns spanning the propagating subspace, each carrying unit incident
     flux and mutually flux-orthogonal, so that summing their absorptivities is
     a basis-independent trace."""
-    F_re = np.asarray(squeeze_batch(F_re))
+    F_re = np.squeeze(np.asarray(F_re), axis=0)
     idx = _propagating_indices(vac)
 
     outside = F_re.copy()
@@ -134,7 +134,7 @@ def _flux_orthonormal_incidences(vac, F_re) -> np.ndarray:
 def _absorptivities(vac, R, T, incidences) -> np.ndarray:
     """Absorptivity of the emitter for each incident channel, from fmmax's own
     Poynting routine."""
-    R, T = np.asarray(squeeze_batch(R)), np.asarray(squeeze_batch(T))
+    R, T = np.squeeze(np.asarray(R), axis=0), np.squeeze(np.asarray(T), axis=0)
     out = []
     for i in range(incidences.shape[1]):
         b = incidences[:, i]
@@ -199,8 +199,8 @@ def test_kirchhoff_is_sensitive_to_the_emitter_normalization():
     q = np.asarray(m["vac"].eigenvalues)
     q = q[0] if q.ndim == 2 else q
     inv_abs_k = np.diag(1.0 / np.abs(q))
-    sigma_e = np.asarray(squeeze_batch(m["sigma_e"]))
-    F_re = np.asarray(squeeze_batch(m["F_re"]))
+    sigma_e = np.squeeze(np.asarray(m["sigma_e"]), axis=0)
+    F_re = np.squeeze(np.asarray(m["F_re"]), axis=0)
     tau_wrong = float(np.real(np.trace(F_re @ inv_abs_k @ sigma_e.T @ inv_abs_k)))
 
     rel = abs(tau_wrong - reference) / abs(reference)
