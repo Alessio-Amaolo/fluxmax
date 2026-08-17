@@ -8,9 +8,11 @@ per diffraction order. In this basis the Poynting-flux bilinear form is a
 full, non-diagonal matrix ``F = A† φ`` rather than simply ``diag(kz)``. The
 trace formula is
 
-    ``T = Tr[P† D† Σ_A D P (F†)^-1 Σ_Bᵀ F^-1]``
+    ``T = Tr[P† D† Σ_A D P (F†)^-1 (Π Σ_B(-k) Π)ᵀ F^-1]``
 
-(note the transpose on the emitter's Σ — see :func:`spectral_transfer`)
+The emitter's operator is its absorption in the ``-k_par`` sector, relabelled
+``G -> -G``; :func:`reciprocal_sigma` gets it from ``+k_par`` data by Lorentz
+reciprocity, so the opposite sector costs no extra eigensolve.
 
 Units
 -----
@@ -20,6 +22,7 @@ This module uses the natural-unit convention:
 - All lengths are expressed in an arbitrary base unit ``L0``.
 """
 
+import chex
 import jax.numpy as jnp
 from beartype import beartype
 from fmmax._fmm_result import LayerSolveResult
@@ -61,6 +64,11 @@ def poynting_flux_matrices(
         Full (complex, generally non-Hermitian) flux matrix
         $\mathcal F = A^\dagger \phi$, shape ``(..., 2N, 2N)``.  Needed by
         :func:`spectral_transfer` for the noise-correlator normalization.
+
+    Notes
+    -----
+    ``1 / (omega * q)`` is singular for a gap channel sitting on the light line,
+    ``|k_par + G| = omega``, where fmmax's S-matrices are NaN too.
     """
     q = vac_lsr.eigenvalues
     phi = vac_lsr.eigenvectors
@@ -73,6 +81,7 @@ def poynting_flux_matrices(
 
     F_re = (F + _adjoint(F)) / 2
     F_ah = (F - _adjoint(F)) / (2j)
+    chex.assert_tree_all_finite(F)
     return F_re, F_ah, F
 
 
@@ -123,6 +132,58 @@ def compute_sigma(
 
 
 @jaxtyped(typechecker=beartype)
+def reciprocal_sigma(
+    R: Complex[Array, "*batch two_n two_n"],
+    T_far: Complex[Array, "*batch two_n two_n"],
+    F_re: Complex[Array, "*batch two_n two_n"],
+    F_ah: Complex[Array, "*batch two_n two_n"],
+    F: Complex[Array, "*batch two_n two_n"],
+) -> Complex[Array, "*batch two_n two_n"]:
+    r"""Emission operator of the opposite Bloch sector, ``Π Σ(-k_par) Π``.
+
+    The FDT correlator is built on the emitter's absorption in the ``-k_par``
+    sector, relabelled ``G -> -G`` by the permutation ``Π``. Lorentz reciprocity
+    supplies it from ``+k_par`` data alone, so no second eigensolve is needed:
+
+    .. math::
+        \Pi R(-k_\parallel) \Pi = \bar{\mathcal F}^{-1} R^T \bar{\mathcal F},
+        \qquad
+        \Pi T(-k_\parallel) \Pi = \bar{\mathcal F}^{-1} T_{far}^T \bar{\mathcal F},
+
+    with $\bar{\mathcal F}$ the entrywise conjugate of the flux form (the Lorentz
+    pairing is $L = 2\bar{\mathcal F}$). Reflection maps to itself; transmission
+    maps to the other direction through the body, which is why ``T_far`` and not
+    ``T`` appears. Feeding these into Eq. (13) and using
+    ``Π F(-k_par) Π = F(k_par)`` gives ``Π Σ(-k_par) Π`` directly.
+
+    Reduces to :func:`compute_sigma` when the cell has in-plane inversion symmetry.
+    Assumes a reciprocal medium (isotropic, non-magneto-optic).
+
+    Parameters
+    ----------
+    R : Complex[Array, "*batch two_n two_n"]
+        Reflection of the body as seen from the gap, ``(..., 2N, 2N)``.
+    T_far : Complex[Array, "*batch two_n two_n"]
+        Transmission through the body *away* from the gap side, ``(..., 2N, 2N)``,
+        i.e. ``T_A_far`` / ``T_B_far`` of
+        :func:`~fluxmax.setup.two_body.body_s_matrices`. Equals ``T`` only for a
+        body that is mirror-symmetric in z.
+    F_re, F_ah, F : Complex[Array, "*batch two_n two_n"]
+        Flux-form matrices from :func:`poynting_flux_matrices`.
+
+    Returns
+    -------
+    Complex[Array, "*batch two_n two_n"]
+        ``Π Σ(-k_par) Π``, Hermitian and PSD, shape ``(..., 2N, 2N)``.
+    """
+    n = F.shape[-1]
+    F_bar = jnp.conj(F)
+    rhs = jnp.concatenate([_transpose(R) @ F_bar, _transpose(T_far) @ F_bar], axis=-1)
+    mapped = jnp.linalg.solve(F_bar, rhs)
+    return compute_sigma(mapped[..., :n], mapped[..., n:], F_re, F_ah)
+
+
+@jaxtyped(typechecker=beartype)
 def propagation_matrix(
     eigenvalues: Complex[Array, "*batch two_n"],
     gap_thickness: Float[Array, "..."] | float,
@@ -155,7 +216,7 @@ def propagation_matrix(
 @jaxtyped(typechecker=beartype)
 def spectral_transfer(
     sigma_A: Complex[Array, "*batch two_n two_n"],
-    sigma_B: Complex[Array, "*batch two_n two_n"],
+    sigma_B_reciprocal: Complex[Array, "*batch two_n two_n"],
     P: Complex[Array, "*batch two_n two_n"],
     R_A: Complex[Array, "*batch two_n two_n"],
     R_B: Complex[Array, "*batch two_n two_n"],
@@ -164,7 +225,7 @@ def spectral_transfer(
     r"""
     Compute the spectral transmission factor.
 
-        Tr[ P† D† Σ_A D P (F†)⁻¹ Σ_Bᵀ F⁻¹ ],
+        Tr[ P† D† Σ_A D P (F†)⁻¹ (Π Σ_B(-k) Π)ᵀ F⁻¹ ],
 
     where
 
@@ -172,6 +233,8 @@ def spectral_transfer(
 
     and F = A† φ is the full Poynting-flux matrix from
     :func:`poynting_flux_matrices`.
+
+    This computes transfer from body B to body A.
 
     In the TE/TM plane-wave basis F is diagonal with entries ω/kz (TE) and
     kz/ω (TM), and the formula reduces to the standard Polder-Van Hove
@@ -189,9 +252,11 @@ def spectral_transfer(
     Parameters
     ----------
     sigma_A : Complex[Array, "*batch two_n two_n"]
-        Emission operator for body A with shape (..., 2N, 2N).
-    sigma_B : Complex[Array, "*batch two_n two_n"]
-        Emission operator for body B with shape (..., 2N, 2N).
+        Absorption operator of body A (the absorber) at ``+k_par``, from
+        :func:`compute_sigma`, shape (..., 2N, 2N).
+    sigma_B_reciprocal : Complex[Array, "*batch two_n two_n"]
+        ``Π Σ_B(-k_par) Π`` for body B (the emitter), from
+        :func:`reciprocal_sigma` -- not ``compute_sigma``.
     P : Complex[Array, "*batch two_n two_n"]
         Gap propagation matrix with shape (..., 2N, 2N).
     R_A : Complex[Array, "*batch two_n two_n"]
@@ -216,18 +281,18 @@ def spectral_transfer(
     P_dag = _adjoint(P)
     D_dag = _adjoint(D)
 
-    # Noise correlator: (F†)⁻¹ Σ_Bᵀ F⁻¹. The FDT correlator carries the
-    # TRANSPOSE of the emitter's absorption operator (conjugate sits on the
-    # CAVEAT: for unit cells with no in-plane symmetry, fixed-k reciprocity
-    # does not hold at all (reciprocity pairs k with -k); there the correct
-    # correlator needs Sigma(-k) with a G -> -G channel relabeling, which
-    # this k-local function cannot express.
+    # Noise correlator (F†)⁻¹ (Π Σ_B(-k) Π)ᵀ F⁻¹: emission into +k_par is governed
+    # by absorption at -k_par, relabelled G -> -G. The caller supplies that operator
+    # via reciprocal_sigma; the transpose is applied here.
     F_inv = jnp.linalg.solve(F, Id)
-    sigma_B_T = jnp.swapaxes(sigma_B, -2, -1)
+    sigma_B_T = _transpose(sigma_B_reciprocal)
     sigma_B_tilde = _adjoint(F_inv) @ sigma_B_T @ F_inv
 
     W = P_dag @ D_dag @ sigma_A @ D @ P @ sigma_B_tilde
-    return _trace(W)
+    tau = _trace(W)
+    # Catches singular D or F, and any NaN inherited from the layer solves.
+    chex.assert_tree_all_finite(tau)
+    return tau
 
 
 @jaxtyped(typechecker=beartype)
@@ -259,7 +324,7 @@ def bose_einstein(
 
 @jaxtyped(typechecker=beartype)
 def spectral_heat_flux(
-    normalized_transfer: Float[Array, "*shape"],
+    transfer_bz_sum: Float[Array, "*shape"] | float,
     omega_nat: Float[Array, "*shape"] | float,
     T_nat: Float[Array, "*shape"] | float,
     cell_area: Float[Array, ""] | float,
@@ -276,14 +341,18 @@ def spectral_heat_flux(
     $$
 
     where the $1/2\pi$ belongs to the $\hbar\omega\Theta/2\pi$ prefactor of the
-    trace formula, and
+    trace formula, and $\frac{1}{N_{\mathrm{BZ}} A_{\mathrm{cell}}}\sum_k$ is
+    the Brillouin-zone measure $\int_{\mathrm{BZ}} d^2k/(2\pi)^2$ evaluated on
+    the sample grid (the BZ area is $(2\pi)^2 / A_{\mathrm{cell}}$).
 
     Parameters
     ----------
-    normalized_transfer : Float[Array, "*shape"]
-        Transfer values already summed over Brillouin-zone points, or an
-        array of per-$k$ values. This function applies the BZ average
-        ``(1 / n_bz) * sum_k``.
+    transfer_bz_sum : Float[Array, "*shape"] | float
+        $\sum_k \tau(\omega, k)$: the transfer already summed -- not averaged --
+        over the ``n_bz`` Brillouin-zone sample points, for each frequency. Use
+        e.g. ``two_body_k_integrated_tau(..., average=False)``. This function
+        applies no reduction of its own, so it broadcasts elementwise over a
+        batch of frequencies.
     omega_nat : Float[Array, "*shape"] | float
         Angular frequency in units of ``1/L0``.
     T_nat : Float[Array, "*shape"] | float
@@ -302,11 +371,15 @@ def spectral_heat_flux(
     -----
     Conversion to SI requires an external scaling that depends on the
     choice of length unit ``L0``; see ``si_units.py``.
+
+    This function used to reduce its first argument with ``jnp.sum``, which
+    summed over the frequency axis as well when called with a batch of
+    frequencies (and could not accept per-$k$ values at all, since the return
+    shape is tied to ``omega_nat``). The BZ sum is now the caller's job.
     """
     theta = bose_einstein(omega_nat, T_nat)
     prefactor = omega_nat * theta / (2.0 * jnp.pi)
-    bz_avg = jnp.sum(normalized_transfer) / n_bz
-    return prefactor * bz_avg / cell_area
+    return prefactor * (transfer_bz_sum / n_bz) / cell_area
 
 
 @jaxtyped(typechecker=beartype)
@@ -349,6 +422,14 @@ def _diag(x: Complex[Array, "*batch n"]) -> Complex[Array, "*batch n n"]:
     y = jnp.zeros(shape, x.dtype)
     i = jnp.arange(x.shape[-1])
     return y.at[..., i, i].set(x)
+
+
+@jaxtyped(typechecker=beartype)
+def _transpose(
+    x: Complex[Array, "*batch m n"],
+) -> Complex[Array, "*batch n m"]:
+    """Transpose (no conjugation) over the last two axes."""
+    return jnp.swapaxes(x, -2, -1)
 
 
 @jaxtyped(typechecker=beartype)

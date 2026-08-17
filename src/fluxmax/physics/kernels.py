@@ -34,8 +34,8 @@ def two_body_tau_kernel(
     primitive_lattice_vectors: LatticeVectors,
     expansion: Expansion,
     slab_permittivity: Complex[Array, "ny nx"],
-    slab_thickness: float,
-    gap: float,
+    slab_thickness: Float[Array, ""] | float,
+    gap: Float[Array, ""] | float,
     eps_gap: complex = 1.0 + 0.0j,
 ) -> Complex[Array, ""]:
     r"""Two-body RCWA transfer kernel for one ``(omega, kx, ky)`` point.
@@ -56,10 +56,11 @@ def two_body_tau_kernel(
             Fourier expansion used by fmmax.
     slab_permittivity : Complex[Array, "ny nx"]
             Patterned slab permittivity for this frequency.
-    slab_thickness : float
-            Slab thickness (same for body A and body B).
-    gap : float
-            Vacuum gap thickness.
+    slab_thickness : Float[Array, ""] | float
+            Slab thickness (same for body A and body B). May be a traced array,
+            so that gradients with respect to the geometry are available.
+    gap : Float[Array, ""] | float
+            Vacuum gap thickness. May be a traced array.
     eps_gap : complex, optional
             Uniform permittivity for the gap-side homogeneous layers.
 
@@ -87,13 +88,13 @@ def two_body_tau_kernel(
         permittivity_array=slab_permittivity,
     )
 
-    R_A, T_A, _ = ss.body_s_matrices(
+    R_A, T_A, _, _ = ss.body_s_matrices(
         vac_lsr,
         slab_lsr,
         thickness,
         is_body_A=True,
     )
-    R_B, T_B, _ = ss.body_s_matrices(
+    R_B, _, T_B_far, _ = ss.body_s_matrices(
         vac_lsr,
         slab_lsr,
         thickness,
@@ -102,16 +103,18 @@ def two_body_tau_kernel(
 
     F_re, F_ah, F = ht.poynting_flux_matrices(vac_lsr)
     sigma_A = ht.compute_sigma(R_A, T_A, F_re, F_ah)
-    sigma_B = ht.compute_sigma(R_B, T_B, F_re, F_ah)
+    # B emits, so its operator is needed in the -k_par sector; reciprocity gets it
+    # from the +k_par blocks, pairing R_B with the far-side transmission.
+    sigma_B_reciprocal = ht.reciprocal_sigma(R_B, T_B_far, F_re, F_ah, F)
     P = ht.propagation_matrix(vac_lsr.eigenvalues, gap_thickness)
-    return ht.spectral_transfer(sigma_A, sigma_B, P, R_A, R_B, F)
+    return ht.spectral_transfer(sigma_A, sigma_B_reciprocal, P, R_A, R_B, F)
 
 
 def make_two_body_bz_kernel(
     primitive_lattice_vectors: LatticeVectors,
     expansion: Expansion,
-    slab_thickness: float,
-    gap: float,
+    slab_thickness: Float[Array, ""] | float,
+    gap: Float[Array, ""] | float,
     eps_gap: complex = 1.0 + 0.0j,
 ) -> Callable[[jnp.ndarray, jnp.ndarray, jnp.ndarray], jnp.ndarray]:
     """Build a single-omega BZ kernel closure for the two-body geometry.
@@ -127,10 +130,10 @@ def make_two_body_bz_kernel(
         Unit-cell lattice vectors.
     expansion : Expansion
         Fourier expansion.
-    slab_thickness : float
-        Slab thickness (same for both bodies).
-    gap : float
-        Vacuum gap thickness.
+    slab_thickness : Float[Array, ""] | float
+        Slab thickness (same for both bodies). May be a traced array.
+    gap : Float[Array, ""] | float
+        Vacuum gap thickness. May be a traced array.
     eps_gap : complex, optional
         Gap-medium permittivity.
 
@@ -168,8 +171,8 @@ def two_body_tau_per_k(
     primitive_lattice_vectors: LatticeVectors,
     expansion: Expansion,
     slab_permittivity: Complex[Array, "ny nx"],
-    slab_thickness: float,
-    gap: float,
+    slab_thickness: Float[Array, ""] | float,
+    gap: Float[Array, ""] | float,
     eps_gap: complex = 1.0 + 0.0j,
 ) -> Complex[Array, " n_k"]:
     """Evaluate :func:`two_body_tau_kernel` over a batch of k-points."""
@@ -195,8 +198,8 @@ def two_body_k_integrated_tau(
     primitive_lattice_vectors: LatticeVectors,
     expansion: Expansion,
     slab_permittivity: Complex[Array, "ny nx"],
-    slab_thickness: float,
-    gap: float,
+    slab_thickness: Float[Array, ""] | float,
+    gap: Float[Array, ""] | float,
     eps_gap: complex = 1.0 + 0.0j,
     average: bool = True,
 ) -> Float[Array, ""]:
@@ -244,8 +247,8 @@ def two_body_omega_batched_tau(
     primitive_lattice_vectors: LatticeVectors,
     expansion: Expansion,
     slab_permittivity: Complex[Array, "..."],
-    slab_thickness: float,
-    gap: float,
+    slab_thickness: Float[Array, ""] | float,
+    gap: Float[Array, ""] | float,
     eps_gap: complex = 1.0 + 0.0j,
     average_k: bool = True,
 ) -> Float[Array, " n_omega"]:
@@ -275,8 +278,8 @@ def frequency_integrated_two_body_tau(
     primitive_lattice_vectors: LatticeVectors,
     expansion: Expansion,
     slab_permittivity: Complex[Array, "..."],
-    slab_thickness: float,
-    gap: float,
+    slab_thickness: Float[Array, ""] | float,
+    gap: Float[Array, ""] | float,
     eps_gap: complex = 1.0 + 0.0j,
     average_k: bool = True,
 ) -> Float[Array, ""]:

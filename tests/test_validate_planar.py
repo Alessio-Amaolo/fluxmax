@@ -6,25 +6,22 @@ PVH result is computed using the implementation in fluxmax.physics.lifshitz.
 Mostly generates plots and diagnostics, but does check that for high enough
 number of Fourier terms, the values agree.
 """
+
 from pathlib import Path
 
-import jax
+import fmmax
 import jax.numpy as jnp
 import matplotlib.pyplot as plt
 import numpy as np
 
-jax.config.update("jax_enable_x64", True)
-
-import fmmax  # noqa: E402
-
-import fluxmax.physics.lifshitz as lifshitz  # noqa: E402
-from fluxmax.physics import heat_transfer as ht  # noqa: E402
-from fluxmax.setup import two_body as ss  # noqa: E402
+import fluxmax.physics.lifshitz as lifshitz
+from fluxmax.physics import heat_transfer as ht
+from fluxmax.setup import two_body as ss
 
 EPS_SLAB = 4.0 + 0.5j
 WAVELENGTH = 1.0
 SLAB_THICKNESS = 0.5
-PITCH = 1.0
+PITCH = 0.93  # do not make 1.0 because it falls on BZ boundary
 GAPS = [0.1, 0.2, 0.5, 1.0]
 
 APPROXIMATE_NUM_TERMS_BY_GAP = {0.1: 200, 0.2: 50, 0.5: 50, 1.0: 50}
@@ -77,16 +74,18 @@ def _rcwa_transfer_for_gap(
     vac_lsr = ss.eigensolve_uniform(**eigensolve_kw, permittivity=1.0 + 0j)
     slab_lsr = ss.eigensolve_uniform(**eigensolve_kw, permittivity=eps_slab)
 
-    reflection_a, transmission_a, _ = ss.body_s_matrices(
+    reflection_a, transmission_a, _, _ = ss.body_s_matrices(
         vac_lsr, slab_lsr, thickness, is_body_A=True
     )
-    reflection_b, transmission_b, _ = ss.body_s_matrices(
+    reflection_b, transmission_b, transmission_b_far, _ = ss.body_s_matrices(
         vac_lsr, slab_lsr, thickness, is_body_A=False
     )
 
     flux_re, flux_ah, flux = ht.poynting_flux_matrices(vac_lsr)
     sigma_a = ht.compute_sigma(reflection_a, transmission_a, flux_re, flux_ah)
-    sigma_b = ht.compute_sigma(reflection_b, transmission_b, flux_re, flux_ah)
+    sigma_b = ht.reciprocal_sigma(
+        reflection_b, transmission_b_far, flux_re, flux_ah, flux
+    )
     propagation = ht.propagation_matrix(vac_lsr.eigenvalues, gap_d)
     tau = ht.spectral_transfer(
         sigma_a,
@@ -144,16 +143,18 @@ def _rcwa_transfer_single_kpar(kpar: float, *, kx: float | None = None) -> float
     vac_lsr = ss.eigensolve_uniform(**eigensolve_kw, permittivity=1.0 + 0j)
     slab_lsr = ss.eigensolve_uniform(**eigensolve_kw, permittivity=EPS_SLAB)
 
-    reflection_a, transmission_a, _ = ss.body_s_matrices(
+    reflection_a, transmission_a, _, _ = ss.body_s_matrices(
         vac_lsr, slab_lsr, thickness, is_body_A=True
     )
-    reflection_b, transmission_b, _ = ss.body_s_matrices(
+    reflection_b, transmission_b, transmission_b_far, _ = ss.body_s_matrices(
         vac_lsr, slab_lsr, thickness, is_body_A=False
     )
 
     flux_re, flux_ah, flux = ht.poynting_flux_matrices(vac_lsr)
     sigma_a = ht.compute_sigma(reflection_a, transmission_a, flux_re, flux_ah)
-    sigma_b = ht.compute_sigma(reflection_b, transmission_b, flux_re, flux_ah)
+    sigma_b = ht.reciprocal_sigma(
+        reflection_b, transmission_b_far, flux_re, flux_ah, flux
+    )
     propagation = ht.propagation_matrix(vac_lsr.eigenvalues, gap_d)
     tau = ht.spectral_transfer(
         sigma_a,
@@ -272,7 +273,9 @@ def test_lossless_planar_transfer_is_zero() -> None:
     )
 
     assert abs(pvh) < threshold, f"PVH should vanish for lossless slab, got {pvh:.3e}"
-    assert abs(rcwa) < threshold, f"RCWA should vanish for lossless slab, got {rcwa:.3e}"
+    assert abs(rcwa) < threshold, (
+        f"RCWA should vanish for lossless slab, got {rcwa:.3e}"
+    )
 
 
 def test_blackbody_limit_for_pvh_and_rcwa() -> None:

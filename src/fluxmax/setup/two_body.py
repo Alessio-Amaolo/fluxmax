@@ -11,12 +11,14 @@ S-matrix element mapping (vacuum bounding layers have thickness 0,
 so S-matrix blocks are in the plane-wave basis directly):
 
   Body A  stack = [vac_above, slab_A, vac_gap]
-    R_A  = s_matrix_A.s12   (reflection back into gap)
-    T_A  = s_matrix_A.s22   (transmission through A, gap→above)
+    R_A     = s_matrix_A.s12   (reflection back into gap)
+    T_A     = s_matrix_A.s22   (transmission through A, gap→above)
+    T_A_far = s_matrix_A.s11   (transmission through A, above→gap)
 
   Body B  stack = [vac_gap, slab_B, vac_above]
-    R_B  = s_matrix_B.s21   (reflection back into gap)
-    T_B  = s_matrix_B.s11   (transmission through B, gap→above)
+    R_B     = s_matrix_B.s21   (reflection back into gap)
+    T_B     = s_matrix_B.s11   (transmission through B, gap→above)
+    T_B_far = s_matrix_B.s22   (transmission through B, above→gap)
 """
 
 from __future__ import annotations
@@ -83,7 +85,18 @@ def make_rcwa_setup(
        k-points in the reciprocal space corresponding to the specified
        `brillouin_grid_shape`.
     """
-    primitive_lattice_vectors = LatticeVectors(u=pitch * X, v=pitch * Y)
+    # fmmax hard-codes X and Y as float32 (fmmax/_basis.py), and `pitch * X` keeps
+    # that dtype even with jax_enable_x64, so the reciprocal lattice
+    # would carry a ~1e-8 relative
+    # error. The zeroth order stays exact, so single-order tests cannot see it,
+    # but it caps multi-order agreement with Polder-Van Hove at ~1e-7 instead of
+    # ~1e-16. Rebuild at the ambient float precision.
+
+    dtype = jnp.result_type(float)
+    primitive_lattice_vectors = LatticeVectors(
+        u=pitch * jnp.asarray(X, dtype=dtype),
+        v=pitch * jnp.asarray(Y, dtype=dtype),
+    )
     expansion = generate_expansion(
         primitive_lattice_vectors=primitive_lattice_vectors,
         approximate_num_terms=approximate_num_terms,
@@ -163,12 +176,31 @@ def eigensolve_patterned(
     primitive_lattice_vectors: LatticeVectors,
     expansion: Expansion,
     permittivity_array: jnp.ndarray,
-    formulation: Formulation = Formulation.JONES_FOURIER,
+    formulation: Formulation = Formulation.FFT,
 ) -> LayerSolveResult:
     """Eigensolve a patterned layer from a 2-D permittivity array.
 
     Same as above but now the permittivity is given by a 2-D array representing the
     spatial distribution of permittivity within the unit cell.
+
+    Parameters
+    ----------
+    formulation : Formulation, optional
+        RCWA formulation used by fmmax. Default is ``Formulation.FFT``, which
+        is *not* fmmax's own default of ``Formulation.JONES_FOURIER``.
+
+    Notes
+    -----
+    The default is ``FFT`` because this package exists to do inverse design, and
+    the vector formulations do not return the gradient of the objective they evaluate:
+    ``fmmax.vector.compute_tangent_field`` calls ``jax.lax.stop_gradient`` on
+    the permittivity, so ``jax.grad`` differentiates at *fixed* tangent vector
+    field.
+
+    The tradeoff is that ``FFT`` converges more slowly in the number of retained
+    Fourier orders: the vector formulations exist precisely to accelerate that
+    convergence. So for a forward-only sweep, where no gradient
+    is taken, passing ``Formulation.JONES_FOURIER`` explicitly is worthwhile.
     """
     return eigensolve_isotropic_media(
         wavelength=wavelength,
@@ -185,13 +217,16 @@ def body_s_matrices(
     slab_lsr: LayerSolveResult,
     slab_thickness: jnp.ndarray,
     is_body_A: bool = True,
-) -> tuple[jnp.ndarray, jnp.ndarray, ScatteringMatrix]:
-    """Compute S-matrix for one body and extract R and T.
+) -> tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray, ScatteringMatrix]:
+    """Compute S-matrix for one body and extract R, T and the far-side T.
 
     For body A the stack is [vac_above, slab_A, vac_gap]:
-        R_A = s.s12,  T_A = s.s22
+        R_A = s.s12,  T_A = s.s22,  T_A_far = s.s11
     For body B the stack is [vac_gap, slab_B, vac_above]:
-        R_B = s.s21,  T_B = s.s11
+        R_B = s.s21,  T_B = s.s11,  T_B_far = s.s22
+
+    ``T`` is transmission of a field incident from the *gap*; ``T_far`` is
+    transmission the other way through the same body.
 
     We are passing zero as the thicknesses because fmmax interprets this as not
     propagating fields in this segement,
@@ -200,22 +235,15 @@ def body_s_matrices(
     slab_thickness may be array to support vectorized computation.
     """
     zero = jnp.zeros_like(slab_thickness)
-
+    s = stack_s_matrix(
+        layer_solve_results=[vac_lsr, slab_lsr, vac_lsr],
+        layer_thicknesses=[zero, slab_thickness, zero],
+    )
     if is_body_A:
-        s = stack_s_matrix(
-            layer_solve_results=[vac_lsr, slab_lsr, vac_lsr],
-            layer_thicknesses=[zero, slab_thickness, zero],
-        )
-        R = s.s12  # reflection back into gap
-        T = s.s22  # transmission gap -> above A
+        R, T, T_far = s.s12, s.s22, s.s11  # gap is on the right of A
     else:
-        s = stack_s_matrix(
-            layer_solve_results=[vac_lsr, slab_lsr, vac_lsr],
-            layer_thicknesses=[zero, slab_thickness, zero],
-        )
-        R = s.s21  # reflection back into gap
-        T = s.s11  # transmission gap -> above B
-    return R, T, s
+        R, T, T_far = s.s21, s.s11, s.s22  # gap is on the left of B
+    return R, T, T_far, s
 
 
 def cell_area(primitive_lattice_vectors: LatticeVectors) -> jnp.ndarray:

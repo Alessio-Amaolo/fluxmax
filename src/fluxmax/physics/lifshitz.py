@@ -401,13 +401,15 @@ def planar_spectral_flux(
     Returns
     -------
     phi_omega : float array
-        The spectral heat flux array matching the shape of omega.
+        The spectral heat flux array matching the shape of omega,
+        $\Phi(\omega)/A = \frac{\hbar\omega\,\Delta\Theta}{2\pi}
+        \int \frac{d^2 k_\parallel}{(2\pi)^2} \mathcal{T}$.
     """
     transfer_1d = jax.vmap(
         polder_van_hove_integrated, in_axes=(0, 0, None, 0, None, None, None, None)
     )(omega, eps_A, thickness_A, eps_B, thickness_B, gap, kpar_max_factor, n_kpar)
 
-    return omega * (theta_hot - theta_cold) * transfer_1d
+    return omega * (theta_hot - theta_cold) / (2.0 * jnp.pi) * transfer_1d
 
 
 @jaxtyped(typechecker=beartype)

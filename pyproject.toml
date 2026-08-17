@@ -13,6 +13,8 @@ dependencies = [
 	"jax",
     "jaxtyping",
     "numpy",
+    "beartype",
+    "chex",
 ]
 
 [project.optional-dependencies]

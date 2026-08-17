@@ -31,7 +31,7 @@ jax.config.update("jax_enable_x64", True)
 
 
 WAVELENGTH = 1.0
-PITCH = 1.0
+PITCH = 0.93  # do not make 1.0 because it falls on BZ boundary
 GAP = 0.2
 NUM_TERMS = 20
 THICKNESS_A = 0.5
