@@ -83,11 +83,11 @@ def _build_emitter(num_terms: int):
     slab = ss.eigensolve_patterned(
         **kw, permittivity_array=centered_grating(EPS_STRIPE, FILL)
     )
-    R_e, T_e, _ = ss.body_s_matrices(
+    R_e, T_e, T_e_far, _ = ss.body_s_matrices(
         vac, slab, jnp.asarray(EMITTER_THICKNESS), is_body_A=False
     )
     F_re, F_ah, F = ht.poynting_flux_matrices(vac)
-    sigma_e = ht.compute_sigma(R_e, T_e, F_re, F_ah)
+    sigma_e = ht.reciprocal_sigma(R_e, T_e_far, F_re, F_ah, F)
     zero = jnp.zeros_like(jnp.asarray(R_e))
     sigma_black = ht.compute_sigma(zero, zero, F_re, F_ah)
     return dict(
@@ -240,7 +240,10 @@ def _blackbody(omega: float, bz_n: int = BZ_N):
     zero = jnp.zeros_like(F_re)
     sigma = ht.compute_sigma(zero, zero, F_re, F_ah)
     P = ht.propagation_matrix(vac.eigenvalues, 0.3)
-    tau = np.real(np.asarray(ht.spectral_transfer(sigma, sigma, P, zero, zero, F)))
+    sigma_emit = ht.reciprocal_sigma(zero, zero, F_re, F_ah, F)
+    tau = np.real(
+        np.asarray(ht.spectral_transfer(sigma, sigma_emit, P, zero, zero, F))
+    )
     return (
         tau,
         np.linalg.norm(np.asarray(k_points), axis=-1),

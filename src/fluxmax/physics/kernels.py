@@ -88,13 +88,13 @@ def two_body_tau_kernel(
         permittivity_array=slab_permittivity,
     )
 
-    R_A, T_A, _ = ss.body_s_matrices(
+    R_A, T_A, _, _ = ss.body_s_matrices(
         vac_lsr,
         slab_lsr,
         thickness,
         is_body_A=True,
     )
-    R_B, T_B, _ = ss.body_s_matrices(
+    R_B, _, T_B_far, _ = ss.body_s_matrices(
         vac_lsr,
         slab_lsr,
         thickness,
@@ -103,9 +103,11 @@ def two_body_tau_kernel(
 
     F_re, F_ah, F = ht.poynting_flux_matrices(vac_lsr)
     sigma_A = ht.compute_sigma(R_A, T_A, F_re, F_ah)
-    sigma_B = ht.compute_sigma(R_B, T_B, F_re, F_ah)
+    # B emits, so its operator is needed in the -k_par sector; reciprocity gets it
+    # from the +k_par blocks, pairing R_B with the far-side transmission.
+    sigma_B_reciprocal = ht.reciprocal_sigma(R_B, T_B_far, F_re, F_ah, F)
     P = ht.propagation_matrix(vac_lsr.eigenvalues, gap_thickness)
-    return ht.spectral_transfer(sigma_A, sigma_B, P, R_A, R_B, F)
+    return ht.spectral_transfer(sigma_A, sigma_B_reciprocal, P, R_A, R_B, F)
 
 
 def make_two_body_bz_kernel(

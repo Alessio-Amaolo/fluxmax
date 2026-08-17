@@ -102,16 +102,16 @@ def _rcwa_tau(k_points, *, num_terms: int = 1, gap: float = GAP):
     vac = ss.eigensolve_uniform(**kw, permittivity=1.0 + 0.0j)
     lsr_A = ss.eigensolve_uniform(**kw, permittivity=EPS_A)
     lsr_B = ss.eigensolve_uniform(**kw, permittivity=EPS_B)
-    R_A, T_A, _ = ss.body_s_matrices(
+    R_A, T_A, _, _ = ss.body_s_matrices(
         vac, lsr_A, jnp.asarray(THICKNESS_A), is_body_A=True
     )
-    R_B, T_B, _ = ss.body_s_matrices(
+    R_B, T_B, T_B_far, _ = ss.body_s_matrices(
         vac, lsr_B, jnp.asarray(THICKNESS_B), is_body_A=False
     )
     F_re, F_ah, F = ht.poynting_flux_matrices(vac)
     P = ht.propagation_matrix(vac.eigenvalues, gap)
     sigma_A = ht.compute_sigma(R_A, T_A, F_re, F_ah)
-    sigma_B = ht.compute_sigma(R_B, T_B, F_re, F_ah)
+    sigma_B = ht.reciprocal_sigma(R_B, T_B_far, F_re, F_ah, F)
     tau = ht.spectral_transfer(sigma_A, sigma_B, P, R_A, R_B, F)
     return np.real(np.asarray(tau)).ravel(), expansion
 
@@ -328,7 +328,7 @@ def test_planar_bilayer_matches_pvh():
     F_re, F_ah, F = ht.poynting_flux_matrices(vac)
     P = ht.propagation_matrix(vac.eigenvalues, GAP)
     sigma_A = ht.compute_sigma(R_A, T_A, F_re, F_ah)
-    sigma_B = ht.compute_sigma(R_B, T_B, F_re, F_ah)
+    sigma_B = ht.reciprocal_sigma(R_B, T_B_far, F_re, F_ah, F)
     rcwa = np.real(
         np.asarray(ht.spectral_transfer(sigma_A, sigma_B, P, R_A, R_B, F))
     ).ravel()
@@ -413,12 +413,12 @@ def _rcwa_bz_sum(num_terms: int) -> float:
     vac = ss.eigensolve_uniform(**kw, permittivity=1.0 + 0.0j)
     slab = ss.eigensolve_uniform(**kw, permittivity=EPS_CONVERGENCE)
     thickness = jnp.asarray(THICKNESS_CONVERGENCE)
-    R_A, T_A, _ = ss.body_s_matrices(vac, slab, thickness, is_body_A=True)
-    R_B, T_B, _ = ss.body_s_matrices(vac, slab, thickness, is_body_A=False)
+    R_A, T_A, _, _ = ss.body_s_matrices(vac, slab, thickness, is_body_A=True)
+    R_B, T_B, T_B_far, _ = ss.body_s_matrices(vac, slab, thickness, is_body_A=False)
     F_re, F_ah, F = ht.poynting_flux_matrices(vac)
     P = ht.propagation_matrix(vac.eigenvalues, CONVERGENCE_GAP)
     sigma_A = ht.compute_sigma(R_A, T_A, F_re, F_ah)
-    sigma_B = ht.compute_sigma(R_B, T_B, F_re, F_ah)
+    sigma_B = ht.reciprocal_sigma(R_B, T_B_far, F_re, F_ah, F)
     tau = ht.spectral_transfer(sigma_A, sigma_B, P, R_A, R_B, F)
     n_bz = BZ_GRID[0] * BZ_GRID[1]
     area = float(np.asarray(ss.cell_area(plv)))

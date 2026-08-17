@@ -3,11 +3,7 @@
 
 Both bodies carry the same freely-designed density, projected with a tanh filter whose
 sharpness beta is raised in stages so the pattern binarizes gradually.
-
-Converted from topology_optimization_heat_transfer.ipynb.
 """
-
-# ruff: noqa: E402  jax x64 and the Agg backend must be set before the imports below
 
 import argparse
 import os

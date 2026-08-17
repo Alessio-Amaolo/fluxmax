@@ -74,16 +74,18 @@ def _rcwa_transfer_for_gap(
     vac_lsr = ss.eigensolve_uniform(**eigensolve_kw, permittivity=1.0 + 0j)
     slab_lsr = ss.eigensolve_uniform(**eigensolve_kw, permittivity=eps_slab)
 
-    reflection_a, transmission_a, _ = ss.body_s_matrices(
+    reflection_a, transmission_a, _, _ = ss.body_s_matrices(
         vac_lsr, slab_lsr, thickness, is_body_A=True
     )
-    reflection_b, transmission_b, _ = ss.body_s_matrices(
+    reflection_b, transmission_b, transmission_b_far, _ = ss.body_s_matrices(
         vac_lsr, slab_lsr, thickness, is_body_A=False
     )
 
     flux_re, flux_ah, flux = ht.poynting_flux_matrices(vac_lsr)
     sigma_a = ht.compute_sigma(reflection_a, transmission_a, flux_re, flux_ah)
-    sigma_b = ht.compute_sigma(reflection_b, transmission_b, flux_re, flux_ah)
+    sigma_b = ht.reciprocal_sigma(
+        reflection_b, transmission_b_far, flux_re, flux_ah, flux
+    )
     propagation = ht.propagation_matrix(vac_lsr.eigenvalues, gap_d)
     tau = ht.spectral_transfer(
         sigma_a,
@@ -141,16 +143,18 @@ def _rcwa_transfer_single_kpar(kpar: float, *, kx: float | None = None) -> float
     vac_lsr = ss.eigensolve_uniform(**eigensolve_kw, permittivity=1.0 + 0j)
     slab_lsr = ss.eigensolve_uniform(**eigensolve_kw, permittivity=EPS_SLAB)
 
-    reflection_a, transmission_a, _ = ss.body_s_matrices(
+    reflection_a, transmission_a, _, _ = ss.body_s_matrices(
         vac_lsr, slab_lsr, thickness, is_body_A=True
     )
-    reflection_b, transmission_b, _ = ss.body_s_matrices(
+    reflection_b, transmission_b, transmission_b_far, _ = ss.body_s_matrices(
         vac_lsr, slab_lsr, thickness, is_body_A=False
     )
 
     flux_re, flux_ah, flux = ht.poynting_flux_matrices(vac_lsr)
     sigma_a = ht.compute_sigma(reflection_a, transmission_a, flux_re, flux_ah)
-    sigma_b = ht.compute_sigma(reflection_b, transmission_b, flux_re, flux_ah)
+    sigma_b = ht.reciprocal_sigma(
+        reflection_b, transmission_b_far, flux_re, flux_ah, flux
+    )
     propagation = ht.propagation_matrix(vac_lsr.eigenvalues, gap_d)
     tau = ht.spectral_transfer(
         sigma_a,

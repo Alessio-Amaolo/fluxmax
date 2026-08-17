@@ -7,11 +7,7 @@ Both bodies share the same patterned slab. The Brillouin-zone average is evaluat
 through ``compute_bz_average``, which chunks the k-points; substitute your own
 ``kernel(omega_i, eps_i, k_points_chunk) -> (n_k_chunk,)`` for a different geometry,
 using ``kernels.two_body_tau_kernel`` as the reference implementation.
-
-Converted from optimize_circular_exclusion_chunked.ipynb.
 """
-
-# ruff: noqa: E402  jax x64 and the Agg backend must be set before the imports below
 
 import argparse
 import os

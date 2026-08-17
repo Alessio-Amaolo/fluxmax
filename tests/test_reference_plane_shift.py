@@ -67,7 +67,7 @@ def _setup(spec_A, spec_B):
 
 
 def _body_blocks(vac, slab, thickness, *, is_body_A, shift=0.0):
-    """R and T of one body as seen from the gap, with the gap-side reference
+    """R, T and the far-side T of one body, with the gap-side reference
     plane moved a distance ``shift`` into the gap.
 
     The reference plane is moved by inserting a vacuum layer of thickness
@@ -81,20 +81,22 @@ def _body_blocks(vac, slab, thickness, *, is_body_A, shift=0.0):
         layers = [vac, slab, vac, vac]
         thicknesses = [zero, jnp.asarray(thickness), spacer, zero]
         s = stack_s_matrix(layer_solve_results=layers, layer_thicknesses=thicknesses)
-        return s.s12, s.s22
+        return s.s12, s.s22, s.s11
     layers = [vac, vac, slab, vac]  # gap on the left
     thicknesses = [zero, spacer, jnp.asarray(thickness), zero]
     s = stack_s_matrix(layer_solve_results=layers, layer_thicknesses=thicknesses)
-    return s.s21, s.s11
+    return s.s21, s.s11, s.s22
 
 
 def _tau(vac, slab_A, slab_B, *, gap, shift_A=0.0, shift_B=0.0, transpose=True):
-    R_A, T_A = _body_blocks(vac, slab_A, THICKNESS_A, is_body_A=True, shift=shift_A)
-    R_B, T_B = _body_blocks(vac, slab_B, THICKNESS_B, is_body_A=False, shift=shift_B)
+    R_A, T_A, _ = _body_blocks(vac, slab_A, THICKNESS_A, is_body_A=True, shift=shift_A)
+    R_B, _, T_B_far = _body_blocks(
+        vac, slab_B, THICKNESS_B, is_body_A=False, shift=shift_B
+    )
     F_re, F_ah, F = ht.poynting_flux_matrices(vac)
     P = ht.propagation_matrix(vac.eigenvalues, gap)
     sigma_A = ht.compute_sigma(R_A, T_A, F_re, F_ah)
-    sigma_B = ht.compute_sigma(R_B, T_B, F_re, F_ah)
+    sigma_B = ht.reciprocal_sigma(R_B, T_B_far, F_re, F_ah, F)
     if transpose:
         tau = ht.spectral_transfer(sigma_A, sigma_B, P, R_A, R_B, F)
     else:
@@ -169,8 +171,10 @@ def test_sigma_transforms_as_congruence_under_plane_shift():
             ("A", slab_A, THICKNESS_A, True, SHIFT_A, P_shift_A),
             ("B", slab_B, THICKNESS_B, False, SHIFT_B, P_shift_B),
         ):
-            R, T = _body_blocks(vac, slab, thickness, is_body_A=is_A)
-            R_s, T_s = _body_blocks(vac, slab, thickness, is_body_A=is_A, shift=shift)
+            R, T, _ = _body_blocks(vac, slab, thickness, is_body_A=is_A)
+            R_s, T_s, _ = _body_blocks(
+                vac, slab, thickness, is_body_A=is_A, shift=shift
+            )
             sigma = ht.compute_sigma(R, T, F_re, F_ah)
             sigma_shifted = ht.compute_sigma(R_s, T_s, F_re, F_ah)
             expected = ht._adjoint(P_shift) @ sigma @ P_shift

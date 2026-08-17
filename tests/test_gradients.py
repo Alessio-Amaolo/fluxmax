@@ -87,12 +87,14 @@ def _tau(
         permittivity_array=_eps_from_density(rho, eps_solid),
         formulation=formulation,
     )
-    R_A, T_A, _ = ss.body_s_matrices(vac, slab, jnp.asarray(thickness), is_body_A=True)
-    R_B, T_B, _ = ss.body_s_matrices(vac, slab, jnp.asarray(thickness), is_body_A=False)
+    R_A, T_A, _, _ = ss.body_s_matrices(vac, slab, jnp.asarray(thickness), is_body_A=True)
+    R_B, T_B, T_B_far, _ = ss.body_s_matrices(
+        vac, slab, jnp.asarray(thickness), is_body_A=False
+    )
     F_re, F_ah, F = ht.poynting_flux_matrices(vac)
     P = ht.propagation_matrix(vac.eigenvalues, jnp.asarray(gap))
     sigma_A = ht.compute_sigma(R_A, T_A, F_re, F_ah)
-    sigma_B = ht.compute_sigma(R_B, T_B, F_re, F_ah)
+    sigma_B = ht.reciprocal_sigma(R_B, T_B_far, F_re, F_ah, F)
     return jnp.real(jnp.sum(ht.spectral_transfer(sigma_A, sigma_B, P, R_A, R_B, F)))
 
 
@@ -235,16 +237,16 @@ def test_gradients_are_finite_in_degenerate_and_lossless_cases():
         )
         vac = ss.eigensolve_uniform(**kw, permittivity=1.0 + 0.0j)
         slab = ss.eigensolve_uniform(**kw, permittivity=eps[0, 0])
-        R_A, T_A, _ = ss.body_s_matrices(
+        R_A, T_A, _, _ = ss.body_s_matrices(
             vac, slab, jnp.asarray(THICKNESS), is_body_A=True
         )
-        R_B, T_B, _ = ss.body_s_matrices(
+        R_B, T_B, T_B_far, _ = ss.body_s_matrices(
             vac, slab, jnp.asarray(THICKNESS), is_body_A=False
         )
         F_re, F_ah, F = ht.poynting_flux_matrices(vac)
         P = ht.propagation_matrix(vac.eigenvalues, jnp.asarray(GAP))
         sigma_A = ht.compute_sigma(R_A, T_A, F_re, F_ah)
-        sigma_B = ht.compute_sigma(R_B, T_B, F_re, F_ah)
+        sigma_B = ht.reciprocal_sigma(R_B, T_B_far, F_re, F_ah, F)
         return jnp.real(jnp.sum(ht.spectral_transfer(sigma_A, sigma_B, P, R_A, R_B, F)))
 
     point = jnp.asarray(1.0)
